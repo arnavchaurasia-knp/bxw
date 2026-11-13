@@ -1,0 +1,15 @@
+{
+  "name": "bxw-win32-arm64",
+  "version": "0.1.0",
+  "description": "Native Windows ARM64 binary distribution for bxw",
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "files": [
+    "bin/bxw.exe"
+  ],
+  "license": "MIT"
+}

@@ -1,0 +1,31 @@
+{
+  "name": "bxw",
+  "version": "0.1.0",
+  "description": "Drive your Windows Chromium browser by profile over CDP with accessibility snapshots and ref-based actions",
+  "bin": {
+    "bxw": "bin/bxw.js"
+  },
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "optionalDependencies": {
+    "bxw-win32-x64": "0.1.0",
+    "bxw-win32-arm64": "0.1.0"
+  },
+  "keywords": [
+    "browser",
+    "cdp",
+    "windows",
+    "mcp",
+    "automation",
+    "ai",
+    "edge",
+    "brave",
+    "chrome"
+  ],
+  "license": "MIT"
+}

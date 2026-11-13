@@ -1,0 +1,105 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-and-release:
+    name: Build & Publish Release
+    runs-on: windows-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Extract Tag Version
+        id: version
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}".TrimStart('v')
+          echo "VERSION=$ver" >> $env:GITHUB_ENV
+          echo "Building version $ver"
+
+      - name: Run Tests
+        run: go test -v ./...
+
+      - name: Compile Windows Binaries
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          
+          # amd64
+          $env:GOOS = "windows"
+          $env:GOARCH = "amd64"
+          $env:CGO_ENABLED = "0"
+          go build -ldflags "-s -w -X main.version=$env:VERSION" -o dist/bxw-windows-amd64.exe .
+          
+          # arm64
+          $env:GOARCH = "arm64"
+          go build -ldflags "-s -w -X main.version=$env:VERSION" -o dist/bxw-windows-arm64.exe .
+
+      - name: Package Archives
+        shell: pwsh
+        run: |
+          # Package amd64
+          New-Item -ItemType Directory -Force -Path dist/amd64
+          Copy-Item dist/bxw-windows-amd64.exe dist/amd64/bxw.exe
+          Copy-Item LICENSE dist/amd64/
+          Copy-Item README.md dist/amd64/
+          Compress-Archive -Path dist/amd64/* -DestinationPath dist/bxw_${{ env.VERSION }}_windows_amd64.zip
+
+          # Package arm64
+          New-Item -ItemType Directory -Force -Path dist/arm64
+          Copy-Item dist/bxw-windows-arm64.exe dist/arm64/bxw.exe
+          Copy-Item LICENSE dist/arm64/
+          Copy-Item README.md dist/arm64/
+          Compress-Archive -Path dist/arm64/* -DestinationPath dist/bxw_${{ env.VERSION }}_windows_arm64.zip
+
+          # Generate SHA256 Checksums
+          cd dist
+          Get-FileHash -Algorithm SHA256 bxw_${{ env.VERSION }}_windows_amd64.zip, bxw_${{ env.VERSION }}_windows_arm64.zip |
+            ForEach-Object { "$($_.Hash.ToLower())  $($_.Path | Split-Path -Leaf)" } |
+            Out-File -Encoding utf8 checksums.txt
+          Get-Content checksums.txt
+          cd ..
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/bxw_${{ env.VERSION }}_windows_amd64.zip
+            dist/bxw_${{ env.VERSION }}_windows_arm64.zip
+            dist/checksums.txt
+          generate_release_notes: true
+
+      - name: Prepare NPM Packages
+        shell: pwsh
+        run: |
+          .\scripts\build.ps1 -Version "${{ env.VERSION }}"
+
+      - name: Publish NPM Packages
+        if: env.NODE_AUTH_TOKEN != ''
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: pwsh
+        run: |
+          npm publish npm/bxw-win32-x64 --access public
+          npm publish npm/bxw-win32-arm64 --access public
+          npm publish npm/bxw --access public
