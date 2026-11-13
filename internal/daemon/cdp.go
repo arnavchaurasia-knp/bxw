@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -56,6 +57,11 @@ func (d *Daemon) launch(headless bool, targetURL string) error {
 
 // listTabs returns the browser's page targets via the DevTools /json endpoint.
 func (d *Daemon) listTabs() ([]Tab, error) {
+	return d.listTabsFiltered("")
+}
+
+// listTabsFiltered returns page targets, optionally filtered by profile.
+func (d *Daemon) listTabsFiltered(profileRef string) ([]Tab, error) {
 	d.mu.Lock()
 	port := d.cdpPort
 	d.mu.Unlock()
@@ -76,11 +82,46 @@ func (d *Daemon) listTabs() ([]Tab, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&all); err != nil {
 		return nil, err
 	}
+
+	pNames := d.profileNames()
+
+	// Try getting browser target info for browserContextId mapping
+	ctxMap := make(map[string]string) // targetID -> profileDir
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if bconn, err := d.browserConn(ctx); err == nil {
+		if btgt, err := d.browserTargets(ctx, bconn); err == nil {
+			d.mu.Lock()
+			for _, t := range btgt {
+				if dir, ok := d.profileOf[t.BrowserContextID]; ok {
+					ctxMap[string(t.TargetID)] = dir
+				}
+			}
+			d.mu.Unlock()
+		}
+		_ = bconn.Close()
+	}
+
+	var targetDir string
+	if profileRef != "" {
+		if p, err := d.resolveProfile(profileRef); err == nil {
+			targetDir = p.Dir
+		}
+	}
+
 	pages := make([]Tab, 0, len(all))
 	for _, t := range all {
-		if t.Type == "page" && !strings.Contains(t.URL, "bxprobe-") {
-			pages = append(pages, t)
+		if t.Type != "page" || strings.Contains(t.URL, "bxprobe-") || strings.Contains(t.URL, "bxwprobe-") {
+			continue
 		}
+		if dir, ok := ctxMap[t.ID]; ok {
+			t.ProfileDir = dir
+			t.Profile = pNames[dir]
+		}
+		if targetDir != "" && t.ProfileDir != "" && t.ProfileDir != targetDir {
+			continue
+		}
+		pages = append(pages, t)
 	}
 	return pages, nil
 }

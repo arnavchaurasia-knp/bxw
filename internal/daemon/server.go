@@ -26,12 +26,15 @@ import (
 type Daemon struct {
 	br       browser.Browser
 	mu       sync.Mutex
+	launchMu sync.Mutex
 	cdpPort  int
 	agentPID int
+	headless bool
 	stop     chan struct{}
 	since    time.Time
 
-	sessions map[string]*tabSession
+	sessions  map[string]*tabSession
+	profileOf map[cdp.BrowserContextID]string
 }
 
 // Serve runs the daemon for browserName until stopped.
@@ -53,10 +56,11 @@ func Serve(browserName string) int {
 	defer ln.Close()
 
 	d := &Daemon{
-		br:       b,
-		stop:     make(chan struct{}),
-		since:    time.Now(),
-		sessions: make(map[string]*tabSession),
+		br:        b,
+		stop:      make(chan struct{}),
+		since:     time.Now(),
+		sessions:  make(map[string]*tabSession),
+		profileOf: make(map[cdp.BrowserContextID]string),
 	}
 
 	// Try discovering existing port (if already running)
@@ -125,11 +129,35 @@ func (d *Daemon) dispatch(req Request) Response {
 
 	switch req.Op {
 	case "tabs", "list_tabs":
-		tabs, err := d.listTabs()
+		profileRef := ""
+		if req.Args != nil {
+			if pr, ok := req.Args["profile"].(string); ok {
+				profileRef = pr
+			}
+		}
+		tabs, err := d.listTabsFiltered(profileRef)
 		if err != nil {
 			return errorResponse(err)
 		}
 		data, _ := json.Marshal(tabs)
+		return Response{Data: data}
+
+	case "open":
+		profileRef := ""
+		targetURL := "about:blank"
+		if req.Args != nil {
+			if pr, ok := req.Args["profile"].(string); ok {
+				profileRef = pr
+			}
+			if u, ok := req.Args["url"].(string); ok && u != "" {
+				targetURL = u
+			}
+		}
+		tab, err := d.open(profileRef, targetURL, timeout)
+		if err != nil {
+			return errorResponse(err)
+		}
+		data, _ := json.Marshal(tab)
 		return Response{Data: data}
 
 	case "launch":
@@ -147,6 +175,7 @@ func (d *Daemon) dispatch(req Request) Response {
 			return errorResponse(err)
 		}
 		d.mu.Lock()
+		d.headless = headless
 		port := d.cdpPort
 		d.mu.Unlock()
 		data, _ := json.Marshal(map[string]any{"port": port, "ws": fmt.Sprintf("ws://127.0.0.1:%d", port)})

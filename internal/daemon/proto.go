@@ -20,9 +20,11 @@ type Response struct {
 
 // Tab is one CDP target as reported by the DevTools /json/list endpoint.
 type Tab struct {
-	ID    string `json:"id"`
-	Type  string `json:"type"`
-	Title string `json:"title"`
-	URL   string `json:"url"`
-	WS    string `json:"webSocketDebuggerUrl,omitempty"`
+	ID         string `json:"id"`
+	Type       string `json:"type"`
+	Title      string `json:"title"`
+	URL        string `json:"url"`
+	WS         string `json:"webSocketDebuggerUrl,omitempty"`
+	Profile    string `json:"profile,omitempty"`
+	ProfileDir string `json:"profile_dir,omitempty"`
 }

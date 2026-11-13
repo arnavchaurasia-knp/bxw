@@ -5,6 +5,7 @@ package browser
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -176,4 +177,42 @@ func Profiles(b Browser) ([]Profile, error) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Dir < out[j].Dir })
 	return out, nil
+}
+
+// FindProfile returns the profile whose display name or folder name matches ref.
+func FindProfile(ps []Profile, ref string) (Profile, error) {
+	for _, p := range ps {
+		if strings.EqualFold(p.Name, ref) || strings.EqualFold(p.Dir, ref) {
+			return p, nil
+		}
+	}
+	var names []string
+	for _, p := range ps {
+		names = append(names, fmt.Sprintf("%q (%s)", p.Name, p.Dir))
+	}
+	return Profile{}, exit.New(exit.NotFound, "no profile matches %q (have: %s)", ref, strings.Join(names, ", "))
+}
+
+// CheckURL ensures the given URL uses an allowed scheme and cannot be parsed as a CLI flag.
+func CheckURL(raw string) error {
+	if strings.HasPrefix(raw, "-") {
+		return exit.New(exit.Validation, "invalid URL %q", raw)
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return exit.New(exit.Validation, "invalid URL %q: %v", raw, err)
+	}
+	switch u.Scheme {
+	case "http", "https", "file", "about", "data":
+		return nil
+	}
+	return exit.New(exit.Validation, "URL %q must start with http://, https://, file://, about: or data:", raw)
+}
+
+// ProbeMarker starts the nonce in every probe URL, allowing bxw to hide its own probe tabs.
+const ProbeMarker = "bxwprobe-"
+
+// ProbeURL generates a lightweight data page carrying the probe marker and nonce.
+func ProbeURL(nonce string) string {
+	return "data:text/html,<title>bxw</title><!--" + ProbeMarker + nonce + "-->"
 }

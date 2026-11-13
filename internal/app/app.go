@@ -43,6 +43,8 @@ func Run(args []string) error {
 		return runKey(args[1:])
 	case "eval":
 		return runEval(args[1:])
+	case "open":
+		return runOpen(args[1:])
 	case "stop":
 		return runStop(args[1:])
 	case "doctor":
@@ -64,6 +66,7 @@ usage:
   bxw list profiles <browser>         list a browser's profiles
   bxw launch <browser> [url]          start an isolated agent instance (CDP on)
   bxw list tabs [browser]             list open tabs of the bxw-managed instance
+  bxw open <url> [--profile <name>]   open url in named profile window
   bxw snapshot <tab> [--out <file>]   accessibility snapshot with stable element refs (e1, e2...)
   bxw click <tab> <ref|sel> [--double] click an element by ref or CSS selector
   bxw fill <tab> <ref|sel> <val>...   fill form inputs, selects, or toggles
@@ -112,11 +115,35 @@ func runList(args []string) error {
 		}
 		return w.Flush()
 	case "tabs":
-		name, err := resolveBrowser(browserFlag(args[1:]))
+		var profileName, browserName string
+		for i := 0; i < len(args[1:]); i++ {
+			switch args[1:][i] {
+			case "--profile":
+				if i+1 < len(args[1:]) {
+					profileName = args[1:][i+1]
+					i++
+				}
+			case "--browser":
+				if i+1 < len(args[1:]) {
+					browserName = args[1:][i+1]
+					i++
+				}
+			default:
+				if strings.HasPrefix(args[1:][i], "--profile=") {
+					profileName = strings.TrimPrefix(args[1:][i], "--profile=")
+				} else if strings.HasPrefix(args[1:][i], "--browser=") {
+					browserName = strings.TrimPrefix(args[1:][i], "--browser=")
+				} else if !strings.HasPrefix(args[1:][i], "-") && browserName == "" {
+					browserName = args[1:][i]
+				}
+			}
+		}
+
+		name, err := resolveBrowser(browserName)
 		if err != nil {
 			return err
 		}
-		data, err := daemon.Call(name, "list_tabs", nil)
+		data, err := daemon.Call(name, "list_tabs", map[string]any{"profile": profileName})
 		if err != nil {
 			return exit.New(exit.Upstream, "%v", err)
 		}
@@ -129,9 +156,31 @@ func runList(args []string) error {
 			return nil
 		}
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "ID\tTITLE\tURL")
+		hasProfiles := false
 		for _, t := range tabs {
-			fmt.Fprintf(w, "%s\t%s\t%s\n", short(t.ID), t.Title, t.URL)
+			if t.Profile != "" || t.ProfileDir != "" {
+				hasProfiles = true
+				break
+			}
+		}
+
+		if hasProfiles {
+			fmt.Fprintln(w, "ID\tPROFILE\tTITLE\tURL")
+			for _, t := range tabs {
+				prof := t.Profile
+				if prof == "" {
+					prof = t.ProfileDir
+				}
+				if prof == "" {
+					prof = "-"
+				}
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", short(t.ID), prof, t.Title, t.URL)
+			}
+		} else {
+			fmt.Fprintln(w, "ID\tTITLE\tURL")
+			for _, t := range tabs {
+				fmt.Fprintf(w, "%s\t%s\t%s\n", short(t.ID), t.Title, t.URL)
+			}
 		}
 		return w.Flush()
 	default:
@@ -510,6 +559,62 @@ func runEval(args []string) error {
 	} else {
 		fmt.Println(string(data))
 	}
+	return nil
+}
+
+func runOpen(args []string) error {
+	var pos []string
+	var browserName, profileName string
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--browser":
+			if i+1 < len(args) {
+				browserName = args[i+1]
+				i++
+			}
+		case "--profile":
+			if i+1 < len(args) {
+				profileName = args[i+1]
+				i++
+			}
+		default:
+			if strings.HasPrefix(args[i], "--browser=") {
+				browserName = strings.TrimPrefix(args[i], "--browser=")
+			} else if strings.HasPrefix(args[i], "--profile=") {
+				profileName = strings.TrimPrefix(args[i], "--profile=")
+			} else if !strings.HasPrefix(args[i], "-") {
+				pos = append(pos, args[i])
+			}
+		}
+	}
+
+	if len(pos) < 1 {
+		return exit.New(exit.Usage, "usage: bxw open <url> [--profile <name>] [--browser <name>]")
+	}
+
+	rawURL := pos[0]
+	name, err := resolveBrowser(browserName)
+	if err != nil {
+		return err
+	}
+
+	data, err := daemon.Call(name, "open", map[string]any{
+		"url":     rawURL,
+		"profile": profileName,
+	})
+	if err != nil {
+		return err
+	}
+
+	var tab daemon.Tab
+	_ = json.Unmarshal(data, &tab)
+
+	profStr := ""
+	if tab.Profile != "" {
+		profStr = fmt.Sprintf(" in %s (%s)", tab.Profile, tab.ProfileDir)
+	}
+	fmt.Printf("opened %s%s: %s (%s)\n", short(tab.ID), profStr, tab.Title, tab.URL)
 	return nil
 }
 
