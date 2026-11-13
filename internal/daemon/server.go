@@ -1,13 +1,21 @@
 package daemon
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/chromedp/cdproto/accessibility"
+	"github.com/chromedp/cdproto/cdp"
+	"github.com/chromedp/cdproto/dom"
+	"github.com/chromedp/cdproto/emulation"
+	"github.com/chromedp/cdproto/page"
 
 	"bxw/internal/browser"
 	"bxw/internal/exit"
@@ -22,6 +30,8 @@ type Daemon struct {
 	agentPID int
 	stop     chan struct{}
 	since    time.Time
+
+	sessions map[string]*tabSession
 }
 
 // Serve runs the daemon for browserName until stopped.
@@ -43,9 +53,10 @@ func Serve(browserName string) int {
 	defer ln.Close()
 
 	d := &Daemon{
-		br:    b,
-		stop:  make(chan struct{}),
-		since: time.Now(),
+		br:       b,
+		stop:     make(chan struct{}),
+		since:    time.Now(),
+		sessions: make(map[string]*tabSession),
 	}
 
 	// Try discovering existing port (if already running)
@@ -105,6 +116,13 @@ func (d *Daemon) handle(conn net.Conn) {
 }
 
 func (d *Daemon) dispatch(req Request) Response {
+	timeout := 30 * time.Second
+	if tStr, ok := req.Args["timeout"].(string); ok && tStr != "" {
+		if t, err := time.ParseDuration(tStr); err == nil && t > 0 {
+			timeout = t
+		}
+	}
+
 	switch req.Op {
 	case "tabs", "list_tabs":
 		tabs, err := d.listTabs()
@@ -113,6 +131,7 @@ func (d *Daemon) dispatch(req Request) Response {
 		}
 		data, _ := json.Marshal(tabs)
 		return Response{Data: data}
+
 	case "launch":
 		headless := false
 		targetURL := "about:blank"
@@ -132,6 +151,7 @@ func (d *Daemon) dispatch(req Request) Response {
 		d.mu.Unlock()
 		data, _ := json.Marshal(map[string]any{"port": port, "ws": fmt.Sprintf("ws://127.0.0.1:%d", port)})
 		return Response{Data: data}
+
 	case "status":
 		d.mu.Lock()
 		port := d.cdpPort
@@ -146,6 +166,79 @@ func (d *Daemon) dispatch(req Request) Response {
 		}
 		data, _ := json.Marshal(st)
 		return Response{Data: data}
+
+	case "snapshot":
+		tab, _ := req.Args["tab"].(string)
+		snap, err := d.snapshot(tab, timeout)
+		if err != nil {
+			return errorResponse(err)
+		}
+		data, _ := json.Marshal(snap)
+		return Response{Data: data}
+
+	case "click":
+		tab, _ := req.Args["tab"].(string)
+		sel, _ := req.Args["selector"].(string)
+		double, _ := req.Args["double"].(bool)
+		res, err := d.click(tab, sel, double, timeout)
+		if err != nil {
+			return errorResponse(err)
+		}
+		data, _ := json.Marshal(res)
+		return Response{Data: data}
+
+	case "fill":
+		tab, _ := req.Args["tab"].(string)
+		var pairs [][2]string
+		if raw, ok := req.Args["pairs"].(string); ok {
+			_ = json.Unmarshal([]byte(raw), &pairs)
+		}
+		res, err := d.fill(tab, pairs, timeout)
+		if err != nil {
+			return errorResponse(err)
+		}
+		data, _ := json.Marshal(res)
+		return Response{Data: data}
+
+	case "type":
+		tab, _ := req.Args["tab"].(string)
+		text, _ := req.Args["text"].(string)
+		submit, _ := req.Args["submit"].(string)
+		res, err := d.typeText(tab, text, submit, timeout)
+		if err != nil {
+			return errorResponse(err)
+		}
+		data, _ := json.Marshal(res)
+		return Response{Data: data}
+
+	case "key":
+		tab, _ := req.Args["tab"].(string)
+		keys, _ := req.Args["keys"].(string)
+		res, err := d.key(tab, keys, timeout)
+		if err != nil {
+			return errorResponse(err)
+		}
+		data, _ := json.Marshal(res)
+		return Response{Data: data}
+
+	case "eval":
+		tab, _ := req.Args["tab"].(string)
+		script, _ := req.Args["script"].(string)
+		sess, err := d.tabSession(tab)
+		if err != nil {
+			return errorResponse(err)
+		}
+		sess.mu.Lock()
+		defer sess.mu.Unlock()
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		var out any
+		if err := sess.eval(ctx, script, &out); err != nil {
+			return errorResponse(err)
+		}
+		data, _ := json.Marshal(out)
+		return Response{Data: data}
+
 	case "stop":
 		select {
 		case <-d.stop:
@@ -153,9 +246,87 @@ func (d *Daemon) dispatch(req Request) Response {
 			close(d.stop)
 		}
 		return Response{}
+
 	default:
 		return Response{Error: fmt.Sprintf("unknown op %q", req.Op), Code: int(exit.Usage)}
 	}
+}
+
+func (d *Daemon) findTab(tabID string) (Tab, error) {
+	tabs, err := d.listTabs()
+	if err != nil {
+		return Tab{}, err
+	}
+	if len(tabs) == 0 {
+		return Tab{}, exit.New(exit.NotFound, "no open tabs in %s", d.br.Label)
+	}
+
+	tabIDLower := strings.ToLower(strings.TrimSpace(tabID))
+	if tabIDLower == "" && len(tabs) == 1 {
+		return tabs[0], nil
+	}
+
+	for _, t := range tabs {
+		if strings.EqualFold(t.ID, tabIDLower) || strings.EqualFold(shortTabID(t.ID), tabIDLower) {
+			return t, nil
+		}
+	}
+	// Prefix match
+	for _, t := range tabs {
+		if strings.HasPrefix(strings.ToLower(t.ID), tabIDLower) {
+			return t, nil
+		}
+	}
+
+	return Tab{}, exit.New(exit.NotFound, "tab %q not found (run: bxw list tabs %s)", tabID, d.br.Name)
+}
+
+func (d *Daemon) tabSession(tabID string) (*tabSession, error) {
+	tab, err := d.findTab(tabID)
+	if err != nil {
+		return nil, err
+	}
+
+	d.mu.Lock()
+	if sess := d.sessions[tab.ID]; sess != nil && sess.conn != nil && sess.conn.closeErr == nil {
+		d.mu.Unlock()
+		return sess, nil
+	}
+	d.mu.Unlock()
+
+	tc, err := dialTab(context.Background(), tab.WS)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, _ = cdp.Call(ctx, tc, page.Enable, page.EnableParams{})
+	_, _ = cdp.Call(ctx, tc, emulation.SetFocusEmulationEnabled, emulation.SetFocusEmulationEnabledParams{Enabled: true})
+	_, _ = cdp.Call(ctx, tc, dom.Enable, dom.EnableParams{})
+	_, _ = cdp.Call(ctx, tc, accessibility.Enable, cdp.Empty{})
+
+	sess := &tabSession{
+		id:    tab.ID,
+		wsURL: tab.WS,
+		conn:  tc,
+		refs:  make(map[string]cdp.BackendNodeID),
+	}
+	sess.watchDialogs(context.Background())
+
+	d.mu.Lock()
+	d.sessions[tab.ID] = sess
+	d.mu.Unlock()
+
+	return sess, nil
+}
+
+func shortTabID(id string) string {
+	if len(id) > 8 {
+		return id[:8]
+	}
+	return id
 }
 
 func errorResponse(err error) Response {

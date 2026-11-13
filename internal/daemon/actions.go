@@ -1,0 +1,444 @@
+package daemon
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"sync/atomic"
+	"time"
+
+	"github.com/chromedp/cdproto/accessibility"
+	"github.com/chromedp/cdproto/cdp"
+	"github.com/chromedp/cdproto/input"
+	"github.com/chromedp/cdproto/page"
+
+	"bxw/internal/exit"
+)
+
+// ActResult describes what an action performed and whether navigation or dialogs occurred.
+type ActResult struct {
+	URL       string   `json:"url"`
+	Title     string   `json:"title"`
+	Navigated bool     `json:"navigated"`
+	NewTabs   []string `json:"new_tabs,omitempty"`
+	Dialog    *Dialog  `json:"dialog,omitempty"`
+}
+
+func (d *Daemon) actOn(tabID string, timeout time.Duration, fn func(ctx context.Context, sess *tabSession) error) (ActResult, error) {
+	sess, err := d.tabSession(tabID)
+	if err != nil {
+		return ActResult{}, err
+	}
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+
+	if err := sess.errIfDialog(); err != nil {
+		return ActResult{}, err
+	}
+
+	actx, interrupt := context.WithCancelCause(context.Background())
+	defer interrupt(nil)
+
+	sess.dmu.Lock()
+	sess.interrupt = interrupt
+	sess.dmu.Unlock()
+	defer func() {
+		sess.dmu.Lock()
+		sess.interrupt = nil
+		sess.dmu.Unlock()
+	}()
+
+	loader := sess.loaderID(actx)
+	var started atomic.Bool
+	frameStarts := cdp.Events(actx, sess.conn, page.FrameStartedLoading)
+	go func() {
+		for _, err := range frameStarts {
+			if err != nil {
+				return
+			}
+			started.Store(true)
+		}
+	}()
+
+	ctx, cancel := context.WithTimeout(actx, timeout)
+	defer cancel()
+
+	err = fn(ctx, sess)
+	if errors.Is(context.Cause(actx), errDialog) {
+		return ActResult{Dialog: sess.pendingDialog()}, nil
+	}
+	if err != nil {
+		return ActResult{}, err
+	}
+
+	sess.settle(actx, &started)
+	if errors.Is(context.Cause(actx), errDialog) {
+		return ActResult{Dialog: sess.pendingDialog()}, nil
+	}
+
+	r := ActResult{}
+	r.Navigated = sess.loaderID(actx) != loader
+	r.URL, r.Title = sess.location(actx)
+	return r, nil
+}
+
+func (d *Daemon) snapshot(tabID string, timeout time.Duration) (Snapshot, error) {
+	sess, err := d.tabSession(tabID)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+
+	if err := sess.errIfDialog(); err != nil {
+		return Snapshot{}, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	tree, err := cdp.Call(ctx, sess.conn, accessibility.GetFullAXTree, accessibility.GetFullAXTreeParams{})
+	if err != nil {
+		return Snapshot{}, exit.New(exit.Upstream, "accessibility getFullAXTree: %v", err)
+	}
+
+	nodes, refs := buildSnapshot(tree.Nodes)
+	sess.refs = refs
+	sess.refLoader = sess.loaderID(ctx)
+
+	url, title := sess.location(ctx)
+	return Snapshot{URL: url, Title: title, Nodes: nodes}, nil
+}
+
+func center(ctx context.Context, sess *tabSession, el string, timeout time.Duration) (float64, float64, error) {
+	sel, err := sess.selector(ctx, el)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	q, _ := json.Marshal(sel)
+	script := fmt.Sprintf(`(() => {
+		const el = document.querySelector(%s);
+		if (!el) return null;
+		el.scrollIntoView({block: 'center', inline: 'center', behavior: 'instant'});
+		const r = el.getBoundingClientRect();
+		return [r.x + r.width / 2, r.y + r.height / 2];
+	})()`, q)
+
+	var xy []float64
+	if err := sess.eval(ctx, script, &xy); err != nil {
+		return 0, 0, exit.New(exit.Upstream, "locate %s: %v", el, err)
+	}
+	if len(xy) != 2 {
+		return 0, 0, exit.New(exit.User, "no visible element matches %q (waited %s)", el, timeout)
+	}
+	return xy[0], xy[1], nil
+}
+
+func (d *Daemon) click(tabID, el string, double bool, timeout time.Duration) (ActResult, error) {
+	return d.actOn(tabID, timeout, func(ctx context.Context, sess *tabSession) error {
+		x, y, err := center(ctx, sess, el, timeout)
+		if err != nil {
+			return err
+		}
+
+		// Mouse move
+		_, err = cdp.Call(ctx, sess.conn, input.DispatchMouseEvent, input.DispatchMouseEventParams{
+			Type: input.DispatchMouseEventTypeMouseMoved,
+			X:    x,
+			Y:    y,
+		})
+		if err != nil {
+			return err
+		}
+
+		// Mouse press
+		_, err = cdp.Call(ctx, sess.conn, input.DispatchMouseEvent, input.DispatchMouseEventParams{
+			Type:       input.DispatchMouseEventTypeMousePressed,
+			Button:     input.MouseButtonLeft,
+			Buttons:    1,
+			ClickCount: 1,
+			X:          x,
+			Y:          y,
+		})
+		if err != nil {
+			return err
+		}
+
+		// Mouse release
+		_, err = cdp.Call(ctx, sess.conn, input.DispatchMouseEvent, input.DispatchMouseEventParams{
+			Type:       input.DispatchMouseEventTypeMouseReleased,
+			Button:     input.MouseButtonLeft,
+			Buttons:    0,
+			ClickCount: 1,
+			X:          x,
+			Y:          y,
+		})
+		if err != nil {
+			return err
+		}
+
+		if double {
+			// Second click
+			_, _ = cdp.Call(ctx, sess.conn, input.DispatchMouseEvent, input.DispatchMouseEventParams{
+				Type:       input.DispatchMouseEventTypeMousePressed,
+				Button:     input.MouseButtonLeft,
+				Buttons:    1,
+				ClickCount: 2,
+				X:          x,
+				Y:          y,
+			})
+			_, _ = cdp.Call(ctx, sess.conn, input.DispatchMouseEvent, input.DispatchMouseEventParams{
+				Type:       input.DispatchMouseEventTypeMouseReleased,
+				Button:     input.MouseButtonLeft,
+				Buttons:    0,
+				ClickCount: 2,
+				X:          x,
+				Y:          y,
+			})
+		}
+
+		return nil
+	})
+}
+
+func (d *Daemon) fill(tabID string, pairs [][2]string, timeout time.Duration) (ActResult, error) {
+	if len(pairs) == 0 {
+		return ActResult{}, exit.New(exit.Validation, "fill requires an element and a value")
+	}
+	return d.actOn(tabID, timeout, func(ctx context.Context, sess *tabSession) error {
+		for _, p := range pairs {
+			if err := fillOne(ctx, sess, p[0], p[1], timeout); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+const fieldKindJS = `(el => {
+	if (!el) return "none";
+	if (el.tagName === "SELECT") return "select";
+	if (el.tagName === "INPUT" && (el.type === "checkbox" || el.type === "radio")) return el.type;
+	const role = el.getAttribute("role");
+	if (role === "checkbox" || role === "switch" || role === "radio") return "checkbox";
+	return "text";
+})(document.querySelector(%s))`
+
+const selectOptionJS = `((el, v) => {
+	if (!el) return false;
+	const o = [...el.options].find(o => o.value === v || o.text.trim() === v);
+	if (!o) return false;
+	el.value = o.value;
+	el.dispatchEvent(new Event("input", {bubbles: true}));
+	el.dispatchEvent(new Event("change", {bubbles: true}));
+	return true;
+})(document.querySelector(%s), %s)`
+
+const checkedJS = `(el => el ? (el.checked === true || el.getAttribute("aria-checked") === "true") : false)(document.querySelector(%s))`
+
+func fillOne(ctx context.Context, sess *tabSession, el, value string, timeout time.Duration) error {
+	sel, err := sess.selector(ctx, el)
+	if err != nil {
+		return err
+	}
+
+	q, _ := json.Marshal(sel)
+	var kind string
+	if err := sess.eval(ctx, fmt.Sprintf(fieldKindJS, q), &kind); err != nil {
+		return exit.New(exit.Upstream, "fill %s: %v", el, err)
+	}
+	if kind == "none" {
+		return exit.New(exit.User, "no element matches %q", el)
+	}
+
+	switch kind {
+	case "select":
+		v, _ := json.Marshal(value)
+		var ok bool
+		if err := sess.eval(ctx, fmt.Sprintf(selectOptionJS, q, v), &ok); err != nil {
+			return exit.New(exit.Upstream, "fill select %s: %v", el, err)
+		}
+		if !ok {
+			return exit.New(exit.User, "%s has no option with value or text %q", el, value)
+		}
+		return nil
+
+	case "checkbox", "radio":
+		want := value == "true"
+		if !want && value != "false" {
+			return exit.New(exit.Validation, "%s is a %s: value must be 'true' or 'false'", el, kind)
+		}
+		var on bool
+		_ = sess.eval(ctx, fmt.Sprintf(checkedJS, q), &on)
+		if on == want {
+			return nil
+		}
+		// Click to toggle
+		x, y, err := center(ctx, sess, el, timeout)
+		if err != nil {
+			return err
+		}
+		_, _ = cdp.Call(ctx, sess.conn, input.DispatchMouseEvent, input.DispatchMouseEventParams{
+			Type:       input.DispatchMouseEventTypeMousePressed,
+			Button:     input.MouseButtonLeft,
+			Buttons:    1,
+			ClickCount: 1,
+			X:          x,
+			Y:          y,
+		})
+		_, _ = cdp.Call(ctx, sess.conn, input.DispatchMouseEvent, input.DispatchMouseEventParams{
+			Type:       input.DispatchMouseEventTypeMouseReleased,
+			Button:     input.MouseButtonLeft,
+			Buttons:    0,
+			ClickCount: 1,
+			X:          x,
+			Y:          y,
+		})
+		return nil
+	}
+
+	// Text input or textarea or contenteditable: focus, select all, insert
+	focusScript := fmt.Sprintf(`(() => {
+		const el = document.querySelector(%s);
+		if (!el) return false;
+		el.focus();
+		if (typeof el.select === "function") {
+			el.select();
+		} else {
+			document.execCommand("selectAll");
+		}
+		return true;
+	})()`, q)
+
+	var focused bool
+	if err := sess.eval(ctx, focusScript, &focused); err != nil || !focused {
+		// Fallback to clicking it first
+		x, y, err := center(ctx, sess, el, timeout)
+		if err != nil {
+			return err
+		}
+		_, _ = cdp.Call(ctx, sess.conn, input.DispatchMouseEvent, input.DispatchMouseEventParams{
+			Type:       input.DispatchMouseEventTypeMousePressed,
+			Button:     input.MouseButtonLeft,
+			Buttons:    1,
+			ClickCount: 1,
+			X:          x,
+			Y:          y,
+		})
+		_, _ = cdp.Call(ctx, sess.conn, input.DispatchMouseEvent, input.DispatchMouseEventParams{
+			Type:       input.DispatchMouseEventTypeMouseReleased,
+			Button:     input.MouseButtonLeft,
+			Buttons:    0,
+			ClickCount: 1,
+			X:          x,
+			Y:          y,
+		})
+		_ = sess.eval(ctx, focusScript, nil)
+	}
+
+	if value == "" {
+		_ = sess.eval(ctx, `document.execCommand("delete")`, nil)
+		return nil
+	}
+
+	_, err = cdp.Call(ctx, sess.conn, input.InsertText, input.InsertTextParams{Text: value})
+	if err != nil {
+		return exit.New(exit.Upstream, "insert text: %v", err)
+	}
+	return nil
+}
+
+func (d *Daemon) typeText(tabID, text, submit string, timeout time.Duration) (ActResult, error) {
+	var submitCombo keyCombo
+	if submit != "" {
+		c, err := parseCombo(submit)
+		if err != nil {
+			return ActResult{}, err
+		}
+		submitCombo = c
+	}
+
+	return d.actOn(tabID, timeout, func(ctx context.Context, sess *tabSession) error {
+		if text != "" {
+			_, err := cdp.Call(ctx, sess.conn, input.InsertText, input.InsertTextParams{Text: text})
+			if err != nil {
+				return exit.New(exit.Upstream, "type text: %v", err)
+			}
+		}
+
+		if submit != "" {
+			_, err := cdp.Call(ctx, sess.conn, input.DispatchKeyEvent, input.DispatchKeyEventParams{
+				Type:                  input.DispatchKeyEventTypeRawKeyDown,
+				Key:                   submitCombo.key,
+				Code:                  submitCombo.code,
+				WindowsVirtualKeyCode: submitCombo.vk,
+				Modifiers:             submitCombo.modifiers,
+				Commands:              submitCombo.commands,
+			})
+			if err != nil {
+				return err
+			}
+			_, _ = cdp.Call(ctx, sess.conn, input.DispatchKeyEvent, input.DispatchKeyEventParams{
+				Type:                  input.DispatchKeyEventTypeKeyUp,
+				Key:                   submitCombo.key,
+				Code:                  submitCombo.code,
+				WindowsVirtualKeyCode: submitCombo.vk,
+				Modifiers:             submitCombo.modifiers,
+			})
+		}
+		return nil
+	})
+}
+
+func (d *Daemon) key(tabID, keys string, timeout time.Duration) (ActResult, error) {
+	combo, err := parseCombo(keys)
+	if err != nil {
+		return ActResult{}, err
+	}
+
+	return d.actOn(tabID, timeout, func(ctx context.Context, sess *tabSession) error {
+		keyType := input.DispatchKeyEventTypeRawKeyDown
+		if combo.text != "" && combo.modifiers == 0 {
+			keyType = input.DispatchKeyEventTypeKeyDown
+		}
+
+		_, err := cdp.Call(ctx, sess.conn, input.DispatchKeyEvent, input.DispatchKeyEventParams{
+			Type:                  keyType,
+			Key:                   combo.key,
+			Code:                  combo.code,
+			Text:                  combo.text,
+			UnmodifiedText:        combo.text,
+			WindowsVirtualKeyCode: combo.vk,
+			Modifiers:             combo.modifiers,
+			Commands:              combo.commands,
+		})
+		if err != nil {
+			return exit.New(exit.Upstream, "key down: %v", err)
+		}
+
+		if combo.text != "" && combo.modifiers == 0 {
+			_, _ = cdp.Call(ctx, sess.conn, input.DispatchKeyEvent, input.DispatchKeyEventParams{
+				Type:                  input.DispatchKeyEventTypeChar,
+				Key:                   combo.key,
+				Code:                  combo.code,
+				Text:                  combo.text,
+				UnmodifiedText:        combo.text,
+				WindowsVirtualKeyCode: combo.vk,
+			})
+		}
+
+		_, err = cdp.Call(ctx, sess.conn, input.DispatchKeyEvent, input.DispatchKeyEventParams{
+			Type:                  input.DispatchKeyEventTypeKeyUp,
+			Key:                   combo.key,
+			Code:                  combo.code,
+			WindowsVirtualKeyCode: combo.vk,
+			Modifiers:             combo.modifiers,
+		})
+		if err != nil {
+			return exit.New(exit.Upstream, "key up: %v", err)
+		}
+		return nil
+	})
+}

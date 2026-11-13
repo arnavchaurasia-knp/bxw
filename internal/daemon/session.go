@@ -1,0 +1,344 @@
+package daemon
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"regexp"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/chromedp/cdproto/cdp"
+	jsonv2 "github.com/chromedp/cdproto/cdp/jsonv2"
+	"github.com/chromedp/cdproto/dom"
+	"github.com/chromedp/cdproto/page"
+	"github.com/chromedp/cdproto/runtime"
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
+
+	"bxw/internal/exit"
+)
+
+// TabConn is a WebSocket connection to a DevTools target tab, implementing cdp.Session.
+type TabConn struct {
+	ws       *websocket.Conn
+	seq      atomic.Uint64
+	mu       sync.Mutex
+	pending  map[uint64]chan cdpResponse
+	subsMu   sync.RWMutex
+	subs     map[string][]chan jsonv2.Value
+	closed   chan struct{}
+	closeErr error
+}
+
+type cdpRequest struct {
+	ID     uint64 `json:"id"`
+	Method string `json:"method"`
+	Params any    `json:"params,omitempty"`
+}
+
+type cdpResponse struct {
+	ID     uint64       `json:"id,omitempty"`
+	Method string       `json:"method,omitempty"`
+	Params jsonv2.Value `json:"params,omitempty"`
+	Result jsonv2.Value `json:"result,omitempty"`
+	Error  *cdpError    `json:"error,omitempty"`
+}
+
+type cdpError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    string `json:"data,omitempty"`
+}
+
+func (e *cdpError) Error() string {
+	return fmt.Sprintf("cdp error %d: %s", e.Code, e.Message)
+}
+
+func dialTab(ctx context.Context, wsURL string) (*TabConn, error) {
+	c, _, err := websocket.Dial(ctx, wsURL, nil)
+	if err != nil {
+		return nil, exit.New(exit.Upstream, "dial tab websocket %s: %v", wsURL, err)
+	}
+	c.SetReadLimit(32 * 1024 * 1024)
+
+	tc := &TabConn{
+		ws:      c,
+		pending: make(map[uint64]chan cdpResponse),
+		subs:    make(map[string][]chan jsonv2.Value),
+		closed:  make(chan struct{}),
+	}
+	go tc.readLoop()
+	return tc, nil
+}
+
+func (tc *TabConn) readLoop() {
+	defer close(tc.closed)
+	for {
+		var resp cdpResponse
+		err := wsjson.Read(context.Background(), tc.ws, &resp)
+		if err != nil {
+			tc.mu.Lock()
+			tc.closeErr = err
+			for _, ch := range tc.pending {
+				ch <- cdpResponse{Error: &cdpError{Message: err.Error()}}
+			}
+			tc.pending = nil
+			tc.mu.Unlock()
+			return
+		}
+		if resp.ID != 0 {
+			tc.mu.Lock()
+			if ch, ok := tc.pending[resp.ID]; ok {
+				delete(tc.pending, resp.ID)
+				ch <- resp
+			}
+			tc.mu.Unlock()
+		} else if resp.Method != "" {
+			tc.subsMu.RLock()
+			subList := tc.subs[resp.Method]
+			for _, ch := range subList {
+				select {
+				case ch <- resp.Params:
+				default:
+				}
+			}
+			tc.subsMu.RUnlock()
+		}
+	}
+}
+
+// Call implements cdp.Session.
+func (tc *TabConn) Call(ctx context.Context, method string, params, result any) error {
+	id := tc.seq.Add(1)
+	ch := make(chan cdpResponse, 1)
+
+	tc.mu.Lock()
+	if tc.closeErr != nil {
+		tc.mu.Unlock()
+		return tc.closeErr
+	}
+	tc.pending[id] = ch
+	tc.mu.Unlock()
+
+	req := cdpRequest{ID: id, Method: method, Params: params}
+	if err := wsjson.Write(ctx, tc.ws, req); err != nil {
+		tc.mu.Lock()
+		delete(tc.pending, id)
+		tc.mu.Unlock()
+		return err
+	}
+
+	select {
+	case <-ctx.Done():
+		tc.mu.Lock()
+		delete(tc.pending, id)
+		tc.mu.Unlock()
+		return ctx.Err()
+	case <-tc.closed:
+		return tc.closeErr
+	case resp := <-ch:
+		if resp.Error != nil {
+			return resp.Error
+		}
+		if result != nil && len(resp.Result) > 0 {
+			return json.Unmarshal([]byte(resp.Result), result)
+		}
+		return nil
+	}
+}
+
+// Subscribe implements cdp.Session.
+func (tc *TabConn) Subscribe(method string) (events <-chan jsonv2.Value, cancel func()) {
+	ch := make(chan jsonv2.Value, 64)
+	tc.subsMu.Lock()
+	tc.subs[method] = append(tc.subs[method], ch)
+	tc.subsMu.Unlock()
+
+	cancel = func() {
+		tc.subsMu.Lock()
+		defer tc.subsMu.Unlock()
+		list := tc.subs[method]
+		for i, c := range list {
+			if c == ch {
+				tc.subs[method] = append(list[:i], list[i+1:]...)
+				break
+			}
+		}
+	}
+	return ch, cancel
+}
+
+// Close closes the tab connection.
+func (tc *TabConn) Close() error {
+	return tc.ws.Close(websocket.StatusNormalClosure, "done")
+}
+
+// Dialog represents an alert, confirm, prompt or beforeunload dialog.
+type Dialog struct {
+	Type          string `json:"type"`
+	Message       string `json:"message"`
+	DefaultPrompt string `json:"default_prompt,omitempty"`
+}
+
+var errDialog = errors.New("a dialog opened")
+
+// tabSession manages the connection and ref state for a single open tab.
+type tabSession struct {
+	id        string
+	wsURL     string
+	conn      *TabConn
+	mu        sync.Mutex
+	dmu       sync.Mutex
+	dialog    *Dialog
+	interrupt context.CancelCauseFunc
+
+	refs      map[string]cdp.BackendNodeID
+	refLoader cdp.LoaderID
+}
+
+func (sess *tabSession) watchDialogs(ctx context.Context) {
+	opened := cdp.Events(ctx, sess.conn, page.JavascriptDialogOpening)
+	closed := cdp.Events(ctx, sess.conn, page.JavascriptDialogClosed)
+
+	go func() {
+		for ev, err := range opened {
+			if err != nil {
+				return
+			}
+			sess.dmu.Lock()
+			sess.dialog = &Dialog{
+				Type:          string(ev.Type),
+				Message:       ev.Message,
+				DefaultPrompt: ev.DefaultPrompt,
+			}
+			if sess.interrupt != nil {
+				sess.interrupt(errDialog)
+			}
+			sess.dmu.Unlock()
+		}
+	}()
+
+	go func() {
+		for _, err := range closed {
+			if err != nil {
+				return
+			}
+			sess.dmu.Lock()
+			sess.dialog = nil
+			sess.dmu.Unlock()
+		}
+	}()
+}
+
+func (sess *tabSession) pendingDialog() *Dialog {
+	sess.dmu.Lock()
+	defer sess.dmu.Unlock()
+	return sess.dialog
+}
+
+func (sess *tabSession) errIfDialog() error {
+	if d := sess.pendingDialog(); d != nil {
+		return exit.New(exit.User, "the page is showing a dialog (%s: %q): run bxw dialog %s accept|dismiss", d.Type, d.Message, sess.id)
+	}
+	return nil
+}
+
+func (sess *tabSession) loaderID(ctx context.Context) cdp.LoaderID {
+	tree, err := cdp.Call(ctx, sess.conn, page.GetFrameTree, cdp.Empty{})
+	if err != nil || tree.FrameTree == nil || tree.FrameTree.Frame == nil {
+		return ""
+	}
+	return tree.FrameTree.Frame.LoaderID
+}
+
+func (sess *tabSession) location(ctx context.Context) (string, string) {
+	var loc []string
+	if err := sess.eval(ctx, `[location.href, document.title]`, &loc); err != nil || len(loc) != 2 {
+		return "", ""
+	}
+	return loc[0], loc[1]
+}
+
+func (sess *tabSession) eval(ctx context.Context, expr string, out any) error {
+	yes := true
+	res, err := cdp.Call(ctx, sess.conn, runtime.Evaluate, runtime.EvaluateParams{
+		Expression:    expr,
+		ReturnByValue: &yes,
+		AwaitPromise:  &yes,
+	})
+	if err != nil {
+		return err
+	}
+	if res.ExceptionDetails != nil {
+		msg := res.ExceptionDetails.Text
+		if res.ExceptionDetails.Exception != nil && res.ExceptionDetails.Exception.Description != "" {
+			msg = res.ExceptionDetails.Exception.Description
+		}
+		return exit.New(exit.User, "script threw: %s", msg)
+	}
+	if out != nil && res.Result != nil && len(res.Result.Value) > 0 {
+		return json.Unmarshal([]byte(res.Result.Value), out)
+	}
+	return nil
+}
+
+var refPattern = regexp.MustCompile(`^e[0-9]+$`)
+
+// selector maps a snapshot ref (e.g. "e12") to "[data-bxw-ref=\"e12\"]" after tagging it on the DOM.
+func (sess *tabSession) selector(ctx context.Context, el string) (string, error) {
+	if el == "" {
+		return "", exit.New(exit.Validation, "an element (CSS selector or snapshot ref such as e12) is required")
+	}
+	if !refPattern.MatchString(el) {
+		return el, nil
+	}
+
+	backend, ok := sess.refs[el]
+	if !ok || (sess.refLoader != "" && sess.loaderID(ctx) != sess.refLoader) {
+		return "", exit.New(exit.User, "%s is not in this tab's latest snapshot: run bxw snapshot %s again", el, sess.id)
+	}
+
+	node, err := cdp.Call(ctx, sess.conn, dom.ResolveNode, dom.ResolveNodeParams{BackendNodeID: backend})
+	if err != nil || node.Object == nil || node.Object.ObjectID == "" {
+		return "", exit.New(exit.User, "%s is no longer on the page: run bxw snapshot %s again", el, sess.id)
+	}
+
+	tagFn := fmt.Sprintf(`function() { (this.nodeType === 3 ? this.parentElement : this).setAttribute("data-bxw-ref", %q); }`, el)
+	_, err = cdp.Call(ctx, sess.conn, runtime.CallFunctionOn, runtime.CallFunctionOnParams{
+		FunctionDeclaration: tagFn,
+		ObjectID:            node.Object.ObjectID,
+	})
+	if err != nil {
+		return "", exit.New(exit.Upstream, "mark %s: %v", el, err)
+	}
+	return fmt.Sprintf(`[data-bxw-ref=%q]`, el), nil
+}
+
+// settle waits for navigations to complete and DOM mutations to quiet down.
+func (sess *tabSession) settle(ctx context.Context, started *atomic.Bool) {
+	time.Sleep(100 * time.Millisecond)
+	if started.Load() {
+		deadline := time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) && ctx.Err() == nil {
+			var state string
+			_ = sess.eval(ctx, `document.readyState`, &state)
+			if state == "complete" {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+	_ = sess.eval(ctx, stableDOMJS, nil)
+}
+
+const stableDOMJS = `new Promise(resolve => {
+	let quiet;
+	const done = () => { observer.disconnect(); resolve(true); };
+	const observer = new MutationObserver(() => { clearTimeout(quiet); quiet = setTimeout(done, 100); });
+	observer.observe(document, {subtree: true, childList: true, attributes: true, characterData: true});
+	quiet = setTimeout(done, 100);
+	setTimeout(done, 1000);
+})`

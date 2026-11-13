@@ -1,11 +1,13 @@
 // Package app is the CLI/MCP surface. M0 ships discovery; M2/M3 add the daemon,
-// agent launch, and the first live tab enumeration over CDP.
+// agent launch, and the first live tab enumeration over CDP; M4 adds DOM/AX snapshot
+// and ref-based actions (click, fill, type, key, eval).
 package app
 
 import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"text/tabwriter"
 
 	"bxw/internal/browser"
@@ -29,6 +31,18 @@ func Run(args []string) error {
 		return runList(args[1:])
 	case "launch":
 		return runLaunch(args[1:])
+	case "snapshot":
+		return runSnapshot(args[1:])
+	case "click":
+		return runClick(args[1:])
+	case "fill":
+		return runFill(args[1:])
+	case "type":
+		return runType(args[1:])
+	case "key":
+		return runKey(args[1:])
+	case "eval":
+		return runEval(args[1:])
 	case "stop":
 		return runStop(args[1:])
 	case "doctor":
@@ -46,12 +60,18 @@ func usage() error {
 	fmt.Print(`bxw — drive your Windows Chromium browser by profile over CDP
 
 usage:
-  bxw list browsers            list installed Chromium browsers
-  bxw list profiles <browser>  list a browser's profiles
-  bxw launch <browser>         start an isolated agent instance (CDP on)
-  bxw list tabs [browser]      list open tabs of the bxw-managed instance
-  bxw stop <browser>           stop the daemon
-  bxw doctor                   self-check this machine
+  bxw list browsers                   list installed Chromium browsers
+  bxw list profiles <browser>         list a browser's profiles
+  bxw launch <browser> [url]          start an isolated agent instance (CDP on)
+  bxw list tabs [browser]             list open tabs of the bxw-managed instance
+  bxw snapshot <tab> [--out <file>]   accessibility snapshot with stable element refs (e1, e2...)
+  bxw click <tab> <ref|sel> [--double] click an element by ref or CSS selector
+  bxw fill <tab> <ref|sel> <val>...   fill form inputs, selects, or toggles
+  bxw type <tab> <text> [--submit <k>] type text into active element
+  bxw key <tab> <combo>               press key or combination (e.g. Enter, Control+A)
+  bxw eval <tab> <expr>               evaluate JavaScript on the tab
+  bxw stop <browser>                  stop the daemon
+  bxw doctor                          self-check this machine
   bxw version
 `)
 	return nil
@@ -92,7 +112,7 @@ func runList(args []string) error {
 		}
 		return w.Flush()
 	case "tabs":
-		name, err := browserArg(args[1:])
+		name, err := resolveBrowser(browserFlag(args[1:]))
 		if err != nil {
 			return err
 		}
@@ -155,6 +175,344 @@ func runLaunch(args []string) error {
 	return nil
 }
 
+func runSnapshot(args []string) error {
+	var pos []string
+	var browserName, outFile string
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--browser":
+			if i+1 < len(args) {
+				browserName = args[i+1]
+				i++
+			}
+		case "--out":
+			if i+1 < len(args) {
+				outFile = args[i+1]
+				i++
+			}
+		default:
+			if strings.HasPrefix(args[i], "--browser=") {
+				browserName = strings.TrimPrefix(args[i], "--browser=")
+			} else if strings.HasPrefix(args[i], "--out=") {
+				outFile = strings.TrimPrefix(args[i], "--out=")
+			} else if !strings.HasPrefix(args[i], "-") {
+				pos = append(pos, args[i])
+			}
+		}
+	}
+
+	tab := ""
+	if len(pos) >= 1 {
+		tab = pos[0]
+	}
+
+	name, err := resolveBrowser(browserName)
+	if err != nil {
+		return err
+	}
+
+	data, err := daemon.Call(name, "snapshot", map[string]any{"tab": tab})
+	if err != nil {
+		return err
+	}
+
+	var snap daemon.Snapshot
+	if err := json.Unmarshal(data, &snap); err != nil {
+		return exit.New(exit.Internal, "decode snapshot: %v", err)
+	}
+
+	text := snap.Text()
+	if outFile != "" {
+		if err := os.WriteFile(outFile, []byte(text), 0o644); err != nil {
+			return exit.New(exit.User, "write %s: %v", outFile, err)
+		}
+		fmt.Printf("wrote %s (%d elements)\n", outFile, len(snap.Nodes))
+		return nil
+	}
+
+	fmt.Print(text)
+	return nil
+}
+
+func runClick(args []string) error {
+	var pos []string
+	var browserName string
+	double := false
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--double":
+			double = true
+		case "--browser":
+			if i+1 < len(args) {
+				browserName = args[i+1]
+				i++
+			}
+		default:
+			if strings.HasPrefix(args[i], "--browser=") {
+				browserName = strings.TrimPrefix(args[i], "--browser=")
+			} else if !strings.HasPrefix(args[i], "-") {
+				pos = append(pos, args[i])
+			}
+		}
+	}
+
+	if len(pos) < 2 {
+		return exit.New(exit.Usage, "usage: bxw click <tab> <element> [--double]")
+	}
+
+	name, err := resolveBrowser(browserName)
+	if err != nil {
+		return err
+	}
+
+	data, err := daemon.Call(name, "click", map[string]any{
+		"tab":      pos[0],
+		"selector": pos[1],
+		"double":   double,
+	})
+	if err != nil {
+		return err
+	}
+
+	var res daemon.ActResult
+	_ = json.Unmarshal(data, &res)
+
+	action := "clicked"
+	if double {
+		action = "double-clicked"
+	}
+	fmt.Printf("%s %s\n", action, pos[1])
+	if res.Navigated {
+		fmt.Printf("navigated to %s (%s)\n", res.URL, res.Title)
+	}
+	return nil
+}
+
+func runFill(args []string) error {
+	var pos []string
+	var browserName string
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--browser":
+			if i+1 < len(args) {
+				browserName = args[i+1]
+				i++
+			}
+		default:
+			if strings.HasPrefix(args[i], "--browser=") {
+				browserName = strings.TrimPrefix(args[i], "--browser=")
+			} else if !strings.HasPrefix(args[i], "-") {
+				pos = append(pos, args[i])
+			}
+		}
+	}
+
+	if len(pos) < 3 || len(pos)%2 != 1 {
+		return exit.New(exit.Usage, "usage: bxw fill <tab> <element> <value> [<element> <value> ...]")
+	}
+
+	tab := pos[0]
+	var pairs [][2]string
+	for i := 1; i < len(pos); i += 2 {
+		pairs = append(pairs, [2]string{pos[i], pos[i+1]})
+	}
+	pairsJSON, _ := json.Marshal(pairs)
+
+	name, err := resolveBrowser(browserName)
+	if err != nil {
+		return err
+	}
+
+	data, err := daemon.Call(name, "fill", map[string]any{
+		"tab":   tab,
+		"pairs": string(pairsJSON),
+	})
+	if err != nil {
+		return err
+	}
+
+	var res daemon.ActResult
+	_ = json.Unmarshal(data, &res)
+
+	fmt.Printf("filled %d field(s)\n", len(pairs))
+	if res.Navigated {
+		fmt.Printf("navigated to %s (%s)\n", res.URL, res.Title)
+	}
+	return nil
+}
+
+func runType(args []string) error {
+	var pos []string
+	var browserName, submit string
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--browser":
+			if i+1 < len(args) {
+				browserName = args[i+1]
+				i++
+			}
+		case "--submit":
+			if i+1 < len(args) {
+				submit = args[i+1]
+				i++
+			}
+		default:
+			if strings.HasPrefix(args[i], "--browser=") {
+				browserName = strings.TrimPrefix(args[i], "--browser=")
+			} else if strings.HasPrefix(args[i], "--submit=") {
+				submit = strings.TrimPrefix(args[i], "--submit=")
+			} else if !strings.HasPrefix(args[i], "-") {
+				pos = append(pos, args[i])
+			}
+		}
+	}
+
+	if len(pos) < 2 {
+		return exit.New(exit.Usage, "usage: bxw type <tab> <text> [--submit <key>]")
+	}
+
+	name, err := resolveBrowser(browserName)
+	if err != nil {
+		return err
+	}
+
+	data, err := daemon.Call(name, "type", map[string]any{
+		"tab":    pos[0],
+		"text":   pos[1],
+		"submit": submit,
+	})
+	if err != nil {
+		return err
+	}
+
+	var res daemon.ActResult
+	_ = json.Unmarshal(data, &res)
+
+	fmt.Printf("typed %q\n", pos[1])
+	if res.Navigated {
+		fmt.Printf("navigated to %s (%s)\n", res.URL, res.Title)
+	}
+	return nil
+}
+
+func runKey(args []string) error {
+	var pos []string
+	var browserName string
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--browser":
+			if i+1 < len(args) {
+				browserName = args[i+1]
+				i++
+			}
+		default:
+			if strings.HasPrefix(args[i], "--browser=") {
+				browserName = strings.TrimPrefix(args[i], "--browser=")
+			} else if !strings.HasPrefix(args[i], "-") {
+				pos = append(pos, args[i])
+			}
+		}
+	}
+
+	if len(pos) < 2 {
+		return exit.New(exit.Usage, "usage: bxw key <tab> <key> (such as Enter, Tab, Control+A)")
+	}
+
+	name, err := resolveBrowser(browserName)
+	if err != nil {
+		return err
+	}
+
+	data, err := daemon.Call(name, "key", map[string]any{
+		"tab":  pos[0],
+		"keys": pos[1],
+	})
+	if err != nil {
+		return err
+	}
+
+	var res daemon.ActResult
+	_ = json.Unmarshal(data, &res)
+
+	fmt.Printf("pressed %s\n", pos[1])
+	if res.Navigated {
+		fmt.Printf("navigated to %s (%s)\n", res.URL, res.Title)
+	}
+	return nil
+}
+
+func runEval(args []string) error {
+	var pos []string
+	var browserName, filePath string
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--browser":
+			if i+1 < len(args) {
+				browserName = args[i+1]
+				i++
+			}
+		case "--file":
+			if i+1 < len(args) {
+				filePath = args[i+1]
+				i++
+			}
+		default:
+			if strings.HasPrefix(args[i], "--browser=") {
+				browserName = strings.TrimPrefix(args[i], "--browser=")
+			} else if strings.HasPrefix(args[i], "--file=") {
+				filePath = strings.TrimPrefix(args[i], "--file=")
+			} else if !strings.HasPrefix(args[i], "-") {
+				pos = append(pos, args[i])
+			}
+		}
+	}
+
+	var script string
+	if filePath != "" {
+		b, err := os.ReadFile(filePath)
+		if err != nil {
+			return exit.New(exit.User, "read %s: %v", filePath, err)
+		}
+		script = string(b)
+	} else if len(pos) >= 2 {
+		script = pos[1]
+	} else {
+		return exit.New(exit.Usage, "usage: bxw eval <tab> '<expression>' | bxw eval <tab> --file <script.js>")
+	}
+
+	if len(pos) < 1 {
+		return exit.New(exit.Usage, "usage: bxw eval <tab> '<expression>'")
+	}
+
+	name, err := resolveBrowser(browserName)
+	if err != nil {
+		return err
+	}
+
+	data, err := daemon.Call(name, "eval", map[string]any{
+		"tab":    pos[0],
+		"script": script,
+	})
+	if err != nil {
+		return err
+	}
+
+	var formatted any
+	if err := json.Unmarshal(data, &formatted); err == nil {
+		pretty, _ := json.MarshalIndent(formatted, "", "  ")
+		fmt.Println(string(pretty))
+	} else {
+		fmt.Println(string(data))
+	}
+	return nil
+}
+
 func runStop(args []string) error {
 	if len(args) < 1 {
 		return exit.New(exit.Usage, "usage: bxw stop <browser>")
@@ -198,19 +556,38 @@ func runDoctor() error {
 	return nil
 }
 
-// browserArg returns the named browser, or the first installed one if omitted.
-func browserArg(args []string) (string, error) {
-	if len(args) >= 1 {
-		if _, ok := browser.Find(args[0]); !ok {
-			return "", exit.New(exit.NotFound, "browser %q not installed (try: bxw list browsers)", args[0])
+func resolveBrowser(flag string) (string, error) {
+	if flag != "" {
+		if _, ok := browser.Find(flag); !ok {
+			return "", exit.New(exit.NotFound, "browser %q not found (try: bxw list browsers)", flag)
 		}
-		return args[0], nil
+		return flag, nil
 	}
 	bs := browser.Installed()
-	if len(bs) == 0 {
-		return "", exit.New(exit.NotFound, "no supported Chromium browser found")
+	for _, b := range bs {
+		if daemon.Running(b.Name) {
+			return b.Name, nil
+		}
 	}
-	return bs[0].Name, nil
+	if len(bs) > 0 {
+		return bs[0].Name, nil
+	}
+	return "", exit.New(exit.NotFound, "no supported Chromium browser found")
+}
+
+func browserFlag(args []string) string {
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--browser" && i+1 < len(args) {
+			return args[i+1]
+		}
+		if strings.HasPrefix(args[i], "--browser=") {
+			return strings.TrimPrefix(args[i], "--browser=")
+		}
+		if !strings.HasPrefix(args[i], "-") {
+			return args[i]
+		}
+	}
+	return ""
 }
 
 func short(id string) string {

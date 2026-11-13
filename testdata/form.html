@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>M4 Action Test</title>
+</head>
+<body>
+  <h1>Form Action Test</h1>
+  <div>
+    <label for="username">Username</label>
+    <input type="text" id="username" placeholder="Enter username">
+  </div>
+  <div>
+    <button id="submit" onclick="document.getElementById('result').textContent = 'Submitted: ' + document.getElementById('username').value">Submit</button>
+  </div>
+  <div id="result">Waiting...</div>
+</body>
+</html>
