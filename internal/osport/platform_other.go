@@ -93,4 +93,6 @@ func (stubPlatform) SpawnDetached(name string, args []string) (int, error) {
 	return pid, nil
 }
 
+func (stubPlatform) ProcessRunning(exeName string) bool { return false }
+
 

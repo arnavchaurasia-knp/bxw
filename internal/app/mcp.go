@@ -1,0 +1,395 @@
+package app
+
+import (
+	"bufio"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
+	"sync"
+
+	"bxw/internal/browser"
+	"bxw/internal/daemon"
+	"bxw/internal/exit"
+)
+
+const mcpProtocol = "2024-11-05"
+
+type rpcMsg struct {
+	JSONRPC string          `json:"jsonrpc"`
+	ID      json.RawMessage `json:"id,omitempty"`
+	Method  string          `json:"method,omitempty"`
+	Params  json.RawMessage `json:"params,omitempty"`
+	Result  any             `json:"result,omitempty"`
+	Error   *rpcError       `json:"error,omitempty"`
+}
+
+type rpcError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+type mcpTool struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	InputSchema map[string]any `json:"inputSchema"`
+	run         func(args map[string]any) (string, error)
+}
+
+func runMCP(args []string) error {
+	if len(args) > 0 && args[0] == "install" {
+		return runMCPInstall(args[1:])
+	}
+	return serveMCP(os.Stdin, os.Stdout)
+}
+
+func serveMCP(in io.Reader, out io.Writer) error {
+	tools := mcpTools()
+	byName := make(map[string]mcpTool, len(tools))
+	for _, t := range tools {
+		byName[t.Name] = t
+	}
+
+	var mu sync.Mutex
+	enc := json.NewEncoder(out)
+	send := func(m rpcMsg) {
+		m.JSONRPC = "2.0"
+		mu.Lock()
+		defer mu.Unlock()
+		_ = enc.Encode(m)
+	}
+
+	sc := bufio.NewScanner(in)
+	sc.Buffer(make([]byte, 1<<20), 16<<20)
+
+	var wg sync.WaitGroup
+	for sc.Scan() {
+		var m rpcMsg
+		if err := json.Unmarshal(sc.Bytes(), &m); err != nil {
+			send(rpcMsg{Error: &rpcError{-32700, "parse error"}})
+			continue
+		}
+		if len(m.ID) == 0 {
+			continue // notification
+		}
+		wg.Add(1)
+		go func(msg rpcMsg) {
+			defer wg.Done()
+			send(handleMCP(msg, tools, byName))
+		}(m)
+	}
+	wg.Wait()
+	return sc.Err()
+}
+
+func handleMCP(m rpcMsg, tools []mcpTool, byName map[string]mcpTool) rpcMsg {
+	reply := rpcMsg{ID: m.ID}
+	switch m.Method {
+	case "initialize":
+		reply.Result = map[string]any{
+			"protocolVersion": mcpProtocol,
+			"capabilities":    map[string]any{"tools": map[string]any{}},
+			"serverInfo":      map[string]any{"name": "bxw", "version": Version},
+			"instructions":    mcpInstructions,
+		}
+	case "ping":
+		reply.Result = map[string]any{}
+	case "tools/list":
+		reply.Result = map[string]any{"tools": tools}
+	case "tools/call":
+		reply.Result = callTool(m.Params, byName)
+	default:
+		reply.Error = &rpcError{-32601, "method not found: " + m.Method}
+	}
+	return reply
+}
+
+const mcpInstructions = `bxw drives the user's running Windows Chromium browser (Edge, Brave, Chrome) over CDP. ` +
+	`Start with list_tabs or open, then snapshot a tab: each element gets a ref like e12 that click, ` +
+	`fill and key actions accept. For form submission or buying/deleting, ask the user first.`
+
+func callTool(params json.RawMessage, byName map[string]mcpTool) map[string]any {
+	var p struct {
+		Name      string         `json:"name"`
+		Arguments map[string]any `json:"arguments"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return toolError(exit.New(exit.Validation, "bad tools/call params: %v", err))
+	}
+	t, ok := byName[p.Name]
+	if !ok {
+		return toolError(exit.New(exit.Validation, "unknown tool %q", p.Name))
+	}
+	if p.Arguments == nil {
+		p.Arguments = make(map[string]any)
+	}
+	out, err := t.run(p.Arguments)
+	if err != nil {
+		return toolError(err)
+	}
+	return map[string]any{
+		"content": []any{map[string]any{"type": "text", "text": out}},
+	}
+}
+
+func toolError(err error) map[string]any {
+	msg := fmt.Sprintf("%v (exit code %d)", err, exit.CodeOf(err))
+	return map[string]any{"isError": true, "content": []any{map[string]any{"type": "text", "text": msg}}}
+}
+
+func str(desc string) map[string]any { return map[string]any{"type": "string", "description": desc} }
+func boolean(desc string) map[string]any {
+	return map[string]any{"type": "boolean", "description": desc}
+}
+
+func argString(args map[string]any, k string) string {
+	switch v := args[k].(type) {
+	case string:
+		return v
+	case bool:
+		return strconv.FormatBool(v)
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	default:
+		if v == nil {
+			return ""
+		}
+		b, _ := json.Marshal(v)
+		return string(b)
+	}
+}
+
+func mcpTools() []mcpTool {
+	return []mcpTool{
+		{
+			Name:        "list_browsers",
+			Description: "List installed Chromium browsers, user data dirs, and their running/debugging status.",
+			InputSchema: map[string]any{"type": "object", "properties": map[string]any{}},
+			run: func(args map[string]any) (string, error) {
+				bs := browser.Installed()
+				b, _ := json.MarshalIndent(bs, "", "  ")
+				return string(b), nil
+			},
+		},
+		{
+			Name:        "list_tabs",
+			Description: "List open tabs in the browser, including IDs, titles, URLs, and profiles.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"browser": str("Browser name (e.g. edge, brave). Defaults to active/first installed."),
+					"profile": str("Filter tabs by profile display name or directory."),
+				},
+			},
+			run: func(args map[string]any) (string, error) {
+				bName, err := resolveBrowser(argString(args, "browser"))
+				if err != nil {
+					return "", err
+				}
+				data, err := daemon.Call(bName, "list_tabs", map[string]any{"profile": argString(args, "profile")})
+				if err != nil {
+					return "", err
+				}
+				return string(data), nil
+			},
+		},
+		{
+			Name:        "open",
+			Description: "Open a URL in a new tab, optionally targeting a specific browser profile.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"url":     str("The URL to open."),
+					"profile": str("Profile name or directory (e.g. 'Work', 'Profile 1')."),
+					"browser": str("Browser name."),
+				},
+				"required": []string{"url"},
+			},
+			run: func(args map[string]any) (string, error) {
+				bName, err := resolveBrowser(argString(args, "browser"))
+				if err != nil {
+					return "", err
+				}
+				data, err := daemon.Call(bName, "open", map[string]any{
+					"url":     argString(args, "url"),
+					"profile": argString(args, "profile"),
+				})
+				if err != nil {
+					return "", err
+				}
+				return string(data), nil
+			},
+		},
+		{
+			Name:        "snapshot",
+			Description: "Take an accessibility snapshot of a tab, returning an indented element tree with stable refs (e1, e2...).",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"tab":     str("Tab ID from list_tabs or open."),
+					"browser": str("Browser name."),
+				},
+				"required": []string{"tab"},
+			},
+			run: func(args map[string]any) (string, error) {
+				bName, err := resolveBrowser(argString(args, "browser"))
+				if err != nil {
+					return "", err
+				}
+				data, err := daemon.Call(bName, "snapshot", map[string]any{"tab": argString(args, "tab")})
+				if err != nil {
+					return "", err
+				}
+				var snap daemon.Snapshot
+				if err := json.Unmarshal(data, &snap); err != nil {
+					return string(data), nil
+				}
+				return snap.Text(), nil
+			},
+		},
+		{
+			Name:        "click",
+			Description: "Click an element by ref (e.g. 'e12') or CSS selector.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"tab":      str("Tab ID."),
+					"element":  str("Ref from latest snapshot (e.g. 'e12') or CSS selector."),
+					"double":   boolean("Double-click when true."),
+					"browser":  str("Browser name."),
+				},
+				"required": []string{"tab", "element"},
+			},
+			run: func(args map[string]any) (string, error) {
+				bName, err := resolveBrowser(argString(args, "browser"))
+				if err != nil {
+					return "", err
+				}
+				double, _ := args["double"].(bool)
+				data, err := daemon.Call(bName, "click", map[string]any{
+					"tab":      argString(args, "tab"),
+					"selector": argString(args, "element"),
+					"double":   double,
+				})
+				if err != nil {
+					return "", err
+				}
+				return string(data), nil
+			},
+		},
+		{
+			Name:        "fill",
+			Description: "Fill form elements (inputs, textareas, selects, checkboxes) by ref or selector.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"tab":      str("Tab ID."),
+					"element":  str("Ref (e.g. 'e12') or CSS selector."),
+					"value":    str("Value to insert, select option text/value, or 'true'/'false' for checkboxes."),
+					"browser":  str("Browser name."),
+				},
+				"required": []string{"tab", "element", "value"},
+			},
+			run: func(args map[string]any) (string, error) {
+				bName, err := resolveBrowser(argString(args, "browser"))
+				if err != nil {
+					return "", err
+				}
+				pairs := [][2]string{{argString(args, "element"), argString(args, "value")}}
+				pairsJSON, _ := json.Marshal(pairs)
+				data, err := daemon.Call(bName, "fill", map[string]any{
+					"tab":   argString(args, "tab"),
+					"pairs": string(pairsJSON),
+				})
+				if err != nil {
+					return "", err
+				}
+				return string(data), nil
+			},
+		},
+		{
+			Name:        "type",
+			Description: "Type text into the currently focused element, with optional submit key.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"tab":     str("Tab ID."),
+					"text":    str("Text to type."),
+					"submit":  str("Optional submit key such as 'Enter'."),
+					"browser": str("Browser name."),
+				},
+				"required": []string{"tab", "text"},
+			},
+			run: func(args map[string]any) (string, error) {
+				bName, err := resolveBrowser(argString(args, "browser"))
+				if err != nil {
+					return "", err
+				}
+				data, err := daemon.Call(bName, "type", map[string]any{
+					"tab":    argString(args, "tab"),
+					"text":   argString(args, "text"),
+					"submit": argString(args, "submit"),
+				})
+				if err != nil {
+					return "", err
+				}
+				return string(data), nil
+			},
+		},
+		{
+			Name:        "key",
+			Description: "Press a key or keyboard shortcut (e.g. 'Enter', 'Tab', 'Escape', 'Control+A').",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"tab":     str("Tab ID."),
+					"key":     str("Key name or combo."),
+					"browser": str("Browser name."),
+				},
+				"required": []string{"tab", "key"},
+			},
+			run: func(args map[string]any) (string, error) {
+				bName, err := resolveBrowser(argString(args, "browser"))
+				if err != nil {
+					return "", err
+				}
+				data, err := daemon.Call(bName, "key", map[string]any{
+					"tab":  argString(args, "tab"),
+					"keys": argString(args, "key"),
+				})
+				if err != nil {
+					return "", err
+				}
+				return string(data), nil
+			},
+		},
+		{
+			Name:        "eval",
+			Description: "Evaluate a JavaScript expression on the tab.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"tab":     str("Tab ID."),
+					"script":  str("JavaScript expression."),
+					"browser": str("Browser name."),
+				},
+				"required": []string{"tab", "script"},
+			},
+			run: func(args map[string]any) (string, error) {
+				bName, err := resolveBrowser(argString(args, "browser"))
+				if err != nil {
+					return "", err
+				}
+				data, err := daemon.Call(bName, "eval", map[string]any{
+					"tab":    argString(args, "tab"),
+					"script": argString(args, "script"),
+				})
+				if err != nil {
+					return "", err
+				}
+				return string(data), nil
+			},
+		},
+	}
+}

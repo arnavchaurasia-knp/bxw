@@ -50,6 +50,8 @@ type Platform interface {
 	// SpawnDaemon starts the daemon process in the background, detached,
 	// returning the process and its stdout pipe for reading the startup handshake.
 	SpawnDaemon(self, browser, logPath string) (*os.Process, io.ReadCloser, error)
+	// ProcessRunning reports whether any running process has the given executable name.
+	ProcessRunning(exeName string) bool
 }
 
 // Current returns the platform adapter for this build's GOOS.

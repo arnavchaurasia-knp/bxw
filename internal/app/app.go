@@ -45,6 +45,10 @@ func Run(args []string) error {
 		return runEval(args[1:])
 	case "open":
 		return runOpen(args[1:])
+	case "setup":
+		return runSetup(args[1:])
+	case "mcp":
+		return runMCP(args[1:])
 	case "stop":
 		return runStop(args[1:])
 	case "doctor":
@@ -67,6 +71,8 @@ usage:
   bxw launch <browser> [url]          start an isolated agent instance (CDP on)
   bxw list tabs [browser]             list open tabs of the bxw-managed instance
   bxw open <url> [--profile <name>]   open url in named profile window
+  bxw setup <browser> [--revert]      enable/disable remote debugging on real profile
+  bxw mcp [install [client]]          speak MCP over stdio or install into AI clients
   bxw snapshot <tab> [--out <file>]   accessibility snapshot with stable element refs (e1, e2...)
   bxw click <tab> <ref|sel> [--double] click an element by ref or CSS selector
   bxw fill <tab> <ref|sel> <val>...   fill form inputs, selects, or toggles
@@ -641,24 +647,6 @@ func runDaemon(args []string) error {
 		return exit.New(exit.Usage, "__daemon requires --browser <name>")
 	}
 	return daemon.Run(name)
-}
-
-func runDoctor() error {
-	fmt.Println("bxw doctor —", Version)
-	bs := browser.Installed()
-	fmt.Printf("  Chromium browsers found: %d\n", len(bs))
-	for _, b := range bs {
-		ps, err := browser.Profiles(b)
-		status := fmt.Sprintf("%d profile(s)", len(ps))
-		if err != nil {
-			status = "profiles unreadable: " + err.Error()
-		}
-		fmt.Printf("    - %-9s %s  (%s)\n", b.Name, b.Exe, status)
-	}
-	if len(bs) == 0 {
-		return exit.New(exit.NotFound, "no supported Chromium browser found")
-	}
-	return nil
 }
 
 func resolveBrowser(flag string) (string, error) {

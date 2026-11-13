@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
@@ -225,6 +226,25 @@ func (winPlatform) SpawnDetached(name string, args []string) (int, error) {
 	pid := cmd.Process.Pid
 	_ = cmd.Process.Release()
 	return pid, nil
+}
+
+// ProcessRunning reports whether any running process has the given executable name.
+func (winPlatform) ProcessRunning(exeName string) bool {
+	h, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
+	if err != nil {
+		return false
+	}
+	defer windows.CloseHandle(h)
+
+	var pe windows.ProcessEntry32
+	pe.Size = uint32(unsafe.Sizeof(pe))
+	for err := windows.Process32First(h, &pe); err == nil; err = windows.Process32Next(h, &pe) {
+		name := windows.UTF16ToString(pe.ExeFile[:])
+		if strings.EqualFold(name, exeName) {
+			return true
+		}
+	}
+	return false
 }
 
 
