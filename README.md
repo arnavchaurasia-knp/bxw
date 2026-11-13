@@ -10,8 +10,7 @@ It is a clean-room, Windows-first sibling of [`bx`](https://github.com/Facets-cl
 (macOS-only), built behind an OS-abstraction port so the OS-agnostic core stays
 contract-compatible and can later merge upstream as Windows adapters.
 
-> **Status:** early. M0 (discovery) works. Attach / snapshot / act land next. See
-> `docs/` for the full HLD+LLD and milestone plan.
+> **Status:** M0–M3 implemented & verified live on Windows 11. Discovery, singleton daemon over AF_UNIX IPC, and live CDP tab enumeration are working. Actions and snapshot refs land next. See `docs/` for the full HLD+LLD and milestone plan.
 
 ## Supported (today)
 - **OS:** Windows 10/11 (built and verified on Windows 11).
@@ -22,18 +21,27 @@ contract-compatible and can later merge upstream as Windows adapters.
 go build -o bxw.exe .
 ```
 
-## Usage (M0)
+## Usage
 ```sh
-bxw list browsers            # installed Chromium browsers + exe + user-data dir
-bxw list profiles <browser>  # a browser's profiles (folder -> display name)
-bxw doctor                   # self-check this machine
+bxw list browsers                   # installed Chromium browsers + exe + user-data dir
+bxw list profiles <browser>         # a browser's profiles (folder -> display name)
+bxw launch <browser> [url]          # launch isolated agent instance with dynamic CDP port
+bxw list tabs [browser]             # query open tabs over CDP via the singleton daemon
+bxw stop <browser>                  # stop the daemon
+bxw doctor                          # self-check this machine
 ```
 
 Example:
 ```
-> bxw list profiles brave
-DIR      NAME
-Default  Work
+> bxw launch edge https://example.com
+launched Microsoft Edge agent instance (CDP ready: ws://127.0.0.1:54801)
+
+> bxw list tabs edge
+ID        TITLE           URL
+14FB1C59  Example Domain  https://example.com/
+
+> bxw stop edge
+stopped daemon for edge
 ```
 
 ## Architecture

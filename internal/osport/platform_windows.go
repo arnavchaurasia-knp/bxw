@@ -3,10 +3,14 @@
 package osport
 
 import (
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
 
@@ -47,28 +51,38 @@ func (winPlatform) Browsers() []BrowserDef {
 	return []BrowserDef{
 		{
 			Name:    "edge",
+			Label:   "Microsoft Edge",
 			Exes:    []string{`%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe`, `%ProgramFiles%\Microsoft\Edge\Application\msedge.exe`},
 			DataDir: `%LOCALAPPDATA%\Microsoft\Edge\User Data`,
+			Inspect: "edge://inspect/#remote-debugging",
 		},
 		{
 			Name:    "brave",
+			Label:   "Brave",
 			Exes:    []string{`%ProgramFiles%\BraveSoftware\Brave-Browser\Application\brave.exe`, `%ProgramFiles(x86)%\BraveSoftware\Brave-Browser\Application\brave.exe`},
 			DataDir: `%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data`,
+			Inspect: "brave://inspect/#remote-debugging",
 		},
 		{
 			Name:    "chrome",
+			Label:   "Google Chrome",
 			Exes:    []string{`%ProgramFiles%\Google\Chrome\Application\chrome.exe`, `%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe`, `%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe`},
 			DataDir: `%LOCALAPPDATA%\Google\Chrome\User Data`,
+			Inspect: "chrome://inspect/#remote-debugging",
 		},
 		{
 			Name:    "vivaldi",
+			Label:   "Vivaldi",
 			Exes:    []string{`%LOCALAPPDATA%\Vivaldi\Application\vivaldi.exe`, `%ProgramFiles%\Vivaldi\Application\vivaldi.exe`},
 			DataDir: `%LOCALAPPDATA%\Vivaldi\User Data`,
+			Inspect: "vivaldi://inspect/#remote-debugging",
 		},
 		{
 			Name:    "chromium",
+			Label:   "Chromium",
 			Exes:    []string{`%LOCALAPPDATA%\Chromium\Application\chrome.exe`},
 			DataDir: `%LOCALAPPDATA%\Chromium\User Data`,
+			Inspect: "chrome://inspect/#remote-debugging",
 		},
 	}
 }
@@ -119,6 +133,98 @@ func (p winPlatform) LocalStatePath(dataDir string) string {
 	return filepath.Join(p.ExpandEnv(dataDir), "Local State")
 }
 
-func (p winPlatform) SocketPath(browser string) string {
-	return filepath.Join(p.LocalAppData(), "bxw", browser+".sock")
+func (p winPlatform) Dir() string {
+	d := filepath.Join(p.LocalAppData(), "bxw")
+	_ = os.MkdirAll(d, 0o755)
+	return d
 }
+
+func (p winPlatform) SocketPath(browser string) string {
+	return filepath.Join(p.Dir(), browser+".sock")
+}
+
+func (p winPlatform) LockPath(browser string) string {
+	return filepath.Join(p.Dir(), browser+".lock")
+}
+
+func (p winPlatform) LogPath(browser string) string {
+	return filepath.Join(p.Dir(), browser+".log")
+}
+
+// Lock acquires a blocking exclusive lock on path using LockFileEx.
+// The returned unlock function releases the lock and closes the file.
+func (winPlatform) Lock(path string) (func(), error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return nil, err
+	}
+	ol := new(windows.Overlapped)
+	err = windows.LockFileEx(windows.Handle(f.Fd()), windows.LOCKFILE_EXCLUSIVE_LOCK, 0, 1, 0, ol)
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	unlock := func() {
+		_ = windows.UnlockFileEx(windows.Handle(f.Fd()), 0, 1, 0, ol)
+		_ = f.Close()
+	}
+	return unlock, nil
+}
+
+// SpawnDaemon launches the child daemon process detached with CREATE_NEW_PROCESS_GROUP
+// and DETACHED_PROCESS, logging stderr to logPath and returning stdout for the startup handshake.
+func (winPlatform) SpawnDaemon(self, browser, logPath string) (*os.Process, io.ReadCloser, error) {
+	logf, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	cmd := exec.Command(self, "__daemon", "--browser", browser)
+	cmd.Stderr = logf
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		CreationFlags: windows.CREATE_NEW_PROCESS_GROUP | windows.DETACHED_PROCESS,
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		logf.Close()
+		return nil, nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		logf.Close()
+		return nil, nil, err
+	}
+	logf.Close() // child process keeps its inherited handle
+	return cmd.Process, stdout, nil
+}
+
+// SpawnBrowser starts a browser executable detached in the background.
+func (winPlatform) SpawnBrowser(exe string, args []string) error {
+	cmd := exec.Command(exe, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		CreationFlags: windows.CREATE_NEW_PROCESS_GROUP,
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	_ = cmd.Process.Release()
+	return nil
+}
+
+// SpawnDetached starts a process in its own group, detached from any console.
+func (winPlatform) SpawnDetached(name string, args []string) (int, error) {
+	cmd := exec.Command(name, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		CreationFlags: windows.CREATE_NEW_PROCESS_GROUP,
+	}
+	if err := cmd.Start(); err != nil {
+		return 0, err
+	}
+	pid := cmd.Process.Pid
+	_ = cmd.Process.Release()
+	return pid, nil
+}
+
+

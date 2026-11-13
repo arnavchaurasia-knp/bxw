@@ -6,16 +6,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
+	"strings"
+	"time"
 
+	"bxw/internal/exit"
 	"bxw/internal/osport"
 )
 
 // Browser is an installed, resolved browser.
 type Browser struct {
 	Name    string // canonical key: edge, brave, chrome, ...
+	Label   string // human name: Microsoft Edge, Brave, ...
 	Exe     string // absolute executable path
 	DataDir string // absolute user-data directory
+	Inspect string // inspect URL: edge://inspect/#remote-debugging
 }
 
 // Profile is one browser profile: its on-disk folder and human name.
@@ -35,11 +41,101 @@ func Installed() []Browser {
 		}
 		out = append(out, Browser{
 			Name:    def.Name,
+			Label:   def.Label,
 			Exe:     exe,
 			DataDir: p.ExpandEnv(def.DataDir),
+			Inspect: def.Inspect,
 		})
 	}
 	return out
+}
+
+// Detect returns the first installed browser that has remote debugging on
+// (its DevToolsActivePort exists), or the first installed browser if none.
+func Detect() (Browser, bool) {
+	bs := Installed()
+	if len(bs) == 0 {
+		return Browser{}, false
+	}
+	for _, b := range bs {
+		portFile := filepath.Join(b.DataDir, "DevToolsActivePort")
+		if _, err := os.Stat(portFile); err == nil {
+			return b, true
+		}
+	}
+	return bs[0], true
+}
+
+// AgentDataDir returns the isolated user data directory for an agent instance.
+func (b Browser) AgentDataDir() string {
+	p := osport.Current()
+	d := filepath.Join(p.Dir(), b.Name+"-agent")
+	_ = os.MkdirAll(d, 0o755)
+	return d
+}
+
+// WSURL reads DevToolsActivePort from either everyday DataDir or AgentDataDir,
+// returning the browser's WebSocket URL.
+func (b Browser) WSURL() (string, error) {
+	// 1. Try everyday browser's DevToolsActivePort
+	portFile := filepath.Join(b.DataDir, "DevToolsActivePort")
+	if data, err := os.ReadFile(portFile); err == nil {
+		if ws, err := parsePort(data); err == nil {
+			return ws, nil
+		}
+	}
+
+	// 2. Try agent browser instance's DevToolsActivePort
+	agentPortFile := filepath.Join(b.AgentDataDir(), "DevToolsActivePort")
+	if data, err := os.ReadFile(agentPortFile); err == nil {
+		if ws, err := parsePort(data); err == nil {
+			return ws, nil
+		}
+	}
+
+	return "", exit.New(exit.Upstream,
+		"%s is not running with remote debugging on: run 'bxw launch %s' or turn it on at %s",
+		b.Label, b.Name, b.Inspect)
+}
+
+// LaunchAgent launches an isolated agent browser instance and waits for DevToolsActivePort.
+func (b Browser) LaunchAgent(headless bool) (string, error) {
+	agentDir := b.AgentDataDir()
+	portFile := filepath.Join(agentDir, "DevToolsActivePort")
+	_ = os.Remove(portFile)
+
+	args := []string{
+		"--remote-debugging-port=0",
+		"--user-data-dir=" + agentDir,
+		"--no-first-run",
+		"--no-default-browser-check",
+	}
+	if headless {
+		args = append(args, "--headless=new")
+	}
+
+	p := osport.Current()
+	if _, err := p.SpawnDetached(b.Exe, args); err != nil {
+		return "", exit.New(exit.Upstream, "launch %s: %v", b.Label, err)
+	}
+
+	for i := 0; i < 50; i++ {
+		time.Sleep(200 * time.Millisecond)
+		if data, err := os.ReadFile(portFile); err == nil {
+			if ws, err := parsePort(data); err == nil {
+				return ws, nil
+			}
+		}
+	}
+	return "", exit.New(exit.Upstream, "%s started but did not write DevToolsActivePort within 10s", b.Label)
+}
+
+func parsePort(data []byte) (string, error) {
+	f := strings.Fields(string(data))
+	if len(f) < 2 || !strings.HasPrefix(f[1], "/devtools/browser/") {
+		return "", exit.New(exit.Upstream, "DevToolsActivePort has unexpected contents")
+	}
+	return "ws://127.0.0.1:" + f[0] + f[1], nil
 }
 
 // Find returns the installed browser with the given canonical name.

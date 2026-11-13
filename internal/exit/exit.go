@@ -8,11 +8,12 @@ import "fmt"
 type Class int
 
 const (
-	OK       Class = iota // 0: success
-	Usage                 // 1: bad invocation
-	NotFound              // 2: a browser/profile/target was not present
-	Upstream              // 3: the browser or OS returned an error we surface as-is
-	Internal              // 4: a bug in bxw
+	OK         Class = iota // 0: success
+	Usage                   // 1: bad invocation
+	NotFound                // 2: a browser/profile/target was not present
+	Upstream                // 3: the browser or OS returned an error we surface as-is
+	Internal                // 4: a bug in bxw
+	Permission              // 5: permission or timeout waiting for authorization
 )
 
 // Error carries a class and a human-actionable message.
