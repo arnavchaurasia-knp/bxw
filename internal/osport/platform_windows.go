@@ -134,22 +134,82 @@ func (p winPlatform) LocalStatePath(dataDir string) string {
 	return filepath.Join(p.ExpandEnv(dataDir), "Local State")
 }
 
-func (p winPlatform) Dir() string {
+func (p winPlatform) DataRoot() string {
 	d := filepath.Join(p.LocalAppData(), "bxw")
 	_ = os.MkdirAll(d, 0o755)
 	return d
 }
 
+func (p winPlatform) RunDir() string {
+	d := filepath.Join(p.DataRoot(), "run")
+	_ = os.MkdirAll(d, 0o755)
+	return d
+}
+
+func (p winPlatform) ProfilesDir() string {
+	d := filepath.Join(p.DataRoot(), "profiles")
+	_ = os.MkdirAll(d, 0o755)
+	return d
+}
+
+func (p winPlatform) ProfileDir(browser string) string {
+	d := filepath.Join(p.ProfilesDir(), browser)
+	_ = os.MkdirAll(d, 0o755)
+	return d
+}
+
+func (p winPlatform) StateDir(browser string) string {
+	d := filepath.Join(p.DataRoot(), "state", browser)
+	_ = os.MkdirAll(d, 0o755)
+	return d
+}
+
+func (p winPlatform) CacheDir() string {
+	d := filepath.Join(p.DataRoot(), "cache")
+	_ = os.MkdirAll(d, 0o755)
+	return d
+}
+
+func (p winPlatform) LogsDir() string {
+	d := filepath.Join(p.DataRoot(), "logs")
+	_ = os.MkdirAll(d, 0o755)
+	return d
+}
+
+func (p winPlatform) HistoryDir() string {
+	d := filepath.Join(p.DataRoot(), "history")
+	_ = os.MkdirAll(d, 0o755)
+	return d
+}
+
+func (p winPlatform) ContextDir() string {
+	d := filepath.Join(p.DataRoot(), "context")
+	_ = os.MkdirAll(d, 0o755)
+	return d
+}
+
+func (p winPlatform) ConfigFile() string {
+	return filepath.Join(p.DataRoot(), "config.toml")
+}
+
+func (p winPlatform) PermissionsFile() string {
+	return filepath.Join(p.DataRoot(), "permissions.json")
+}
+
+func (p winPlatform) Dir() string {
+	return p.RunDir()
+}
+
 func (p winPlatform) SocketPath(browser string) string {
-	return filepath.Join(p.Dir(), browser+".sock")
+	return filepath.Join(p.RunDir(), browser+".sock")
 }
 
 func (p winPlatform) LockPath(browser string) string {
-	return filepath.Join(p.Dir(), browser+".lock")
+	return filepath.Join(p.RunDir(), browser+".lock")
 }
 
 func (p winPlatform) LogPath(browser string) string {
-	return filepath.Join(p.Dir(), browser+".log")
+	return filepath.Join(p.LogsDir(), browser+".log")
 }
 
 // Lock acquires a blocking exclusive lock on path using LockFileEx.

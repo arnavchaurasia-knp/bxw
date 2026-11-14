@@ -42,3 +42,4 @@ If you discover a security vulnerability in `bxw`, please report it responsibly:
 - Email the maintainers directly or open a confidential Security Advisory on GitHub.
 - Do not open public issues for suspected security vulnerabilities.
 - Please provide a reproducible proof-of-concept and detailed version information (output of `bxw doctor`).
+

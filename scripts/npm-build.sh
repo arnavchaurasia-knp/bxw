@@ -22,3 +22,4 @@ for pair in "${TARGETS[@]}"; do
 done
 
 echo "Done building npm binaries for version ${VERSION}."
+

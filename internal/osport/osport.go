@@ -33,7 +33,7 @@ type Platform interface {
 	ResolveExe(BrowserDef) (string, bool)
 	// LocalStatePath is the absolute path to a data dir's "Local State" file.
 	LocalStatePath(dataDir string) string
-	// Dir is the directory where bxw stores sockets, locks, and logs.
+	// Dir is the directory where bxw stores runtime sockets, locks, and ports.
 	Dir() string
 	// SocketPath is the daemon's per-browser IPC socket path.
 	SocketPath(browser string) string
@@ -41,6 +41,29 @@ type Platform interface {
 	LockPath(browser string) string
 	// LogPath is the daemon's per-browser log file path.
 	LogPath(browser string) string
+
+	// DataRoot is the root storage directory (%LOCALAPPDATA%\bxw on Windows).
+	DataRoot() string
+	// ProfilesDir is where persistent isolated Chromium profiles live.
+	ProfilesDir() string
+	// ProfileDir is the persistent profile path for a specific browser.
+	ProfileDir(browser string) string
+	// RunDir is where runtime IPC sockets, locks, and port files live.
+	RunDir() string
+	// StateDir is where per-browser tab state and ref baselines are stored.
+	StateDir(browser string) string
+	// CacheDir is where content-addressed blobs (screenshots, html) are cached.
+	CacheDir() string
+	// LogsDir is where daemon logs are stored.
+	LogsDir() string
+	// HistoryDir is where per-browser audit navigation logs are appended.
+	HistoryDir() string
+	// ContextDir is where durable agent task/session context is stored.
+	ContextDir() string
+	// ConfigFile is the path to the optional configuration file.
+	ConfigFile() string
+	// PermissionsFile is the path to permissions.json.
+	PermissionsFile() string
 
 	// Lock acquires a blocking exclusive lock on path. The returned function
 	// releases the lock when called.

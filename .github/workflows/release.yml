@@ -103,3 +103,4 @@ jobs:
           npm publish npm/bxw-win32-x64 --access public
           npm publish npm/bxw-win32-arm64 --access public
           npm publish npm/bxw --access public
+

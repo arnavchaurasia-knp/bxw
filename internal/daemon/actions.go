@@ -14,15 +14,31 @@ import (
 	"github.com/chromedp/cdproto/page"
 
 	"bxw/internal/exit"
+	"bxw/internal/history"
 )
 
 // ActResult describes what an action performed and whether navigation or dialogs occurred.
 type ActResult struct {
-	URL       string   `json:"url"`
-	Title     string   `json:"title"`
-	Navigated bool     `json:"navigated"`
-	NewTabs   []string `json:"new_tabs,omitempty"`
-	Dialog    *Dialog  `json:"dialog,omitempty"`
+	URL          string   `json:"url"`
+	Title        string   `json:"title"`
+	Navigated    bool     `json:"navigated"`
+	NewTabs      []string `json:"new_tabs,omitempty"`
+	Dialog       *Dialog  `json:"dialog,omitempty"`
+	ChangedNodes int      `json:"changed_nodes,omitempty"`
+	Terse        string   `json:"terse,omitempty"`
+}
+
+func (r ActResult) TerseSummary(action string) string {
+	if r.Navigated {
+		return fmt.Sprintf("%s -> navigated to %s (%s)", action, r.URL, r.Title)
+	}
+	if r.Dialog != nil {
+		return fmt.Sprintf("%s -> dialog: %s (%q)", action, r.Dialog.Type, r.Dialog.Message)
+	}
+	if r.ChangedNodes > 0 {
+		return fmt.Sprintf("%s -> %d nodes changed", action, r.ChangedNodes)
+	}
+	return fmt.Sprintf("%s -> done", action)
 }
 
 func (d *Daemon) actOn(tabID string, timeout time.Duration, fn func(ctx context.Context, sess *tabSession) error) (ActResult, error) {
@@ -80,10 +96,27 @@ func (d *Daemon) actOn(tabID string, timeout time.Duration, fn func(ctx context.
 	r := ActResult{}
 	r.Navigated = sess.loaderID(actx) != loader
 	r.URL, r.Title = sess.location(actx)
+
+	// Check post-action node changes against stored baseline
+	if base, err := LoadTabState(d.br.Name, tabID); err == nil && len(base.Nodes) > 0 {
+		tree, err := cdp.Call(ctx, sess.conn, accessibility.GetFullAXTree, accessibility.GetFullAXTreeParams{})
+		if err == nil {
+			nodes, refs := buildSnapshot(tree.Nodes)
+			sess.refs = refs
+			_, changedCount := DiffSnapshots(base.Nodes, nodes)
+			r.ChangedNodes = changedCount
+			_ = SaveTabState(d.br.Name, tabID, Snapshot{URL: r.URL, Title: r.Title, Nodes: nodes, Hash: ComputeHash(nodes)}, refs)
+		}
+	}
+
+	if r.Navigated {
+		_ = history.Log(d.br.Name, "Default", tabID, r.URL, r.Title, "agent")
+	}
+
 	return r, nil
 }
 
-func (d *Daemon) snapshot(tabID string, timeout time.Duration) (Snapshot, error) {
+func (d *Daemon) snapshot(tabID string, full bool, scopeRef, findQuery string, timeout time.Duration) (Snapshot, error) {
 	sess, err := d.tabSession(tabID)
 	if err != nil {
 		return Snapshot{}, err
@@ -108,7 +141,39 @@ func (d *Daemon) snapshot(tabID string, timeout time.Duration) (Snapshot, error)
 	sess.refLoader = sess.loaderID(ctx)
 
 	url, title := sess.location(ctx)
-	return Snapshot{URL: url, Title: title, Nodes: nodes}, nil
+	currHash := ComputeHash(nodes)
+
+	// Scoped subtree or find filter
+	filteredNodes := nodes
+	if scopeRef != "" {
+		filteredNodes = FilterSubtree(nodes, scopeRef)
+	} else if findQuery != "" {
+		filteredNodes = FilterFind(nodes, findQuery)
+	}
+
+	snap := Snapshot{
+		URL:   url,
+		Title: title,
+		Nodes: filteredNodes,
+		Hash:  currHash,
+	}
+
+	// Diff snapshots against stored baseline on disk (Pillar B)
+	base, err := LoadTabState(d.br.Name, tabID)
+	hasBaseline := (err == nil && len(base.Nodes) > 0)
+
+	if !full && hasBaseline && scopeRef == "" && findQuery == "" {
+		diff, _ := DiffSnapshots(base.Nodes, nodes)
+		snap.Diff = diff
+		if diff == "unchanged\n" {
+			snap.Unchanged = true
+		}
+	}
+
+	// Save baseline to disk: state/<browser>/<tab>.json
+	_ = SaveTabState(d.br.Name, tabID, Snapshot{URL: url, Title: title, Nodes: nodes, Hash: currHash}, refs)
+
+	return snap, nil
 }
 
 func center(ctx context.Context, sess *tabSession, el string, timeout time.Duration) (float64, float64, error) {
@@ -441,4 +506,25 @@ func (d *Daemon) key(tabID, keys string, timeout time.Duration) (ActResult, erro
 		}
 		return nil
 	})
+}
+
+// Screenshot captures the page visible viewport as PNG bytes.
+func (d *Daemon) screenshot(tabID string, timeout time.Duration) ([]byte, error) {
+	sess, err := d.tabSession(tabID)
+	if err != nil {
+		return nil, err
+	}
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	buf, err := cdp.Call(ctx, sess.conn, page.CaptureScreenshot, page.CaptureScreenshotParams{
+		Format: page.CaptureScreenshotFormatPng,
+	})
+	if err != nil {
+		return nil, exit.New(exit.Upstream, "capture screenshot: %v", err)
+	}
+	return buf.Data, nil
 }

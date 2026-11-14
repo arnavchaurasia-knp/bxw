@@ -162,16 +162,20 @@ func (d *Daemon) dispatch(req Request) Response {
 
 	case "launch":
 		headless := false
+		realProfile := false
 		targetURL := "about:blank"
 		if req.Args != nil {
 			if h, ok := req.Args["headless"].(bool); ok {
 				headless = h
 			}
+			if r, ok := req.Args["real_profile"].(bool); ok {
+				realProfile = r
+			}
 			if u, ok := req.Args["url"].(string); ok && u != "" {
 				targetURL = u
 			}
 		}
-		if err := d.launch(headless, targetURL); err != nil {
+		if err := d.launch(headless, targetURL, realProfile); err != nil {
 			return errorResponse(err)
 		}
 		d.mu.Lock()
@@ -198,7 +202,10 @@ func (d *Daemon) dispatch(req Request) Response {
 
 	case "snapshot":
 		tab, _ := req.Args["tab"].(string)
-		snap, err := d.snapshot(tab, timeout)
+		full, _ := req.Args["full"].(bool)
+		scopeRef, _ := req.Args["ref"].(string)
+		findQuery, _ := req.Args["find"].(string)
+		snap, err := d.snapshot(tab, full, scopeRef, findQuery, timeout)
 		if err != nil {
 			return errorResponse(err)
 		}
@@ -267,6 +274,14 @@ func (d *Daemon) dispatch(req Request) Response {
 		}
 		data, _ := json.Marshal(out)
 		return Response{Data: data}
+
+	case "screenshot":
+		tab, _ := req.Args["tab"].(string)
+		pngBytes, err := d.screenshot(tab, timeout)
+		if err != nil {
+			return errorResponse(err)
+		}
+		return Response{Data: pngBytes}
 
 	case "stop":
 		select {

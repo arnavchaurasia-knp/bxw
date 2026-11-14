@@ -7,9 +7,11 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 
 	"bxw/internal/browser"
+	"bxw/internal/cache"
 	"bxw/internal/daemon"
 	"bxw/internal/exit"
 )
@@ -89,12 +91,46 @@ func handleMCP(m rpcMsg, tools []mcpTool, byName map[string]mcpTool) rpcMsg {
 	case "initialize":
 		reply.Result = map[string]any{
 			"protocolVersion": mcpProtocol,
-			"capabilities":    map[string]any{"tools": map[string]any{}},
-			"serverInfo":      map[string]any{"name": "bxw", "version": Version},
-			"instructions":    mcpInstructions,
+			"capabilities": map[string]any{
+				"tools":     map[string]any{},
+				"resources": map[string]any{},
+			},
+			"serverInfo":   map[string]any{"name": "bxw", "version": Version},
+			"instructions": mcpInstructions,
 		}
 	case "ping":
 		reply.Result = map[string]any{}
+	case "resources/list":
+		reply.Result = map[string]any{"resources": []any{}}
+	case "resources/read":
+		var p struct {
+			URI string `json:"uri"`
+		}
+		_ = json.Unmarshal(m.Params, &p)
+		if strings.HasPrefix(p.URI, "bxw://cache/") {
+			data, err := cache.Get(p.URI)
+			if err != nil {
+				reply.Error = &rpcError{-32602, fmt.Sprintf("resource not found: %v", err)}
+			} else {
+				mime := "application/octet-stream"
+				if strings.HasSuffix(p.URI, ".png") {
+					mime = "image/png"
+				} else if strings.HasSuffix(p.URI, ".html") {
+					mime = "text/html"
+				}
+				reply.Result = map[string]any{
+					"contents": []any{
+						map[string]any{
+							"uri":      p.URI,
+							"mimeType": mime,
+							"blob":     string(data),
+						},
+					},
+				}
+			}
+		} else {
+			reply.Error = &rpcError{-32602, fmt.Sprintf("unsupported URI scheme: %s", p.URI)}
+		}
 	case "tools/list":
 		reply.Result = map[string]any{"tools": tools}
 	case "tools/call":
@@ -223,11 +259,47 @@ func mcpTools() []mcpTool {
 		},
 		{
 			Name:        "snapshot",
-			Description: "Take an accessibility snapshot of a tab, returning an indented element tree with stable refs (e1, e2...).",
+			Description: "Take an accessibility snapshot of a tab, returning an indented element tree with stable refs (e1, e2...). Returns diffs vs previous snapshot by default to save tokens.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"tab":     str("Tab ID from list_tabs or open."),
+					"browser": str("Browser name."),
+					"full":    boolean("Return full accessibility tree without diffing (default false)."),
+					"ref":     str("Optional element ref (e.g. 'e12') to scope snapshot to a subtree."),
+					"find":    str("Optional search string to return matching elements and ancestors."),
+				},
+				"required": []string{"tab"},
+			},
+			run: func(args map[string]any) (string, error) {
+				bName, err := resolveBrowser(argString(args, "browser"))
+				if err != nil {
+					return "", err
+				}
+				full, _ := args["full"].(bool)
+				data, err := daemon.Call(bName, "snapshot", map[string]any{
+					"tab":  argString(args, "tab"),
+					"full": full,
+					"ref":  argString(args, "ref"),
+					"find": argString(args, "find"),
+				})
+				if err != nil {
+					return "", err
+				}
+				var snap daemon.Snapshot
+				if err := json.Unmarshal(data, &snap); err != nil {
+					return string(data), nil
+				}
+				return snap.Text(), nil
+			},
+		},
+		{
+			Name:        "screenshot",
+			Description: "Capture page viewport as PNG, saving to content-addressed cache and returning a bxw://cache/<hash>.png resource URI.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"tab":     str("Tab ID."),
 					"browser": str("Browser name."),
 				},
 				"required": []string{"tab"},
@@ -237,15 +309,17 @@ func mcpTools() []mcpTool {
 				if err != nil {
 					return "", err
 				}
-				data, err := daemon.Call(bName, "snapshot", map[string]any{"tab": argString(args, "tab")})
+				data, err := daemon.Call(bName, "screenshot", map[string]any{
+					"tab": argString(args, "tab"),
+				})
 				if err != nil {
 					return "", err
 				}
-				var snap daemon.Snapshot
-				if err := json.Unmarshal(data, &snap); err != nil {
-					return string(data), nil
+				uri, _, err := cache.Put(data, ".png")
+				if err != nil {
+					return "", exit.New(exit.Internal, "cache screenshot: %v", err)
 				}
-				return snap.Text(), nil
+				return uri, nil
 			},
 		},
 		{
@@ -274,6 +348,10 @@ func mcpTools() []mcpTool {
 				})
 				if err != nil {
 					return "", err
+				}
+				var res daemon.ActResult
+				if err := json.Unmarshal(data, &res); err == nil {
+					return res.TerseSummary(fmt.Sprintf("clicked %s", argString(args, "element"))), nil
 				}
 				return string(data), nil
 			},
@@ -305,6 +383,10 @@ func mcpTools() []mcpTool {
 				if err != nil {
 					return "", err
 				}
+				var res daemon.ActResult
+				if err := json.Unmarshal(data, &res); err == nil {
+					return res.TerseSummary(fmt.Sprintf("filled %s", argString(args, "element"))), nil
+				}
 				return string(data), nil
 			},
 		},
@@ -334,6 +416,10 @@ func mcpTools() []mcpTool {
 				if err != nil {
 					return "", err
 				}
+				var res daemon.ActResult
+				if err := json.Unmarshal(data, &res); err == nil {
+					return res.TerseSummary(fmt.Sprintf("typed %q", argString(args, "text"))), nil
+				}
 				return string(data), nil
 			},
 		},
@@ -360,6 +446,10 @@ func mcpTools() []mcpTool {
 				})
 				if err != nil {
 					return "", err
+				}
+				var res daemon.ActResult
+				if err := json.Unmarshal(data, &res); err == nil {
+					return res.TerseSummary(fmt.Sprintf("pressed %s", argString(args, "key"))), nil
 				}
 				return string(data), nil
 			},
@@ -393,3 +483,4 @@ func mcpTools() []mcpTool {
 		},
 	}
 }
+

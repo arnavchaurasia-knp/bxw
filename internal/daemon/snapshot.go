@@ -22,9 +22,12 @@ type SnapNode struct {
 
 // Snapshot is the formatted accessibility snapshot of a tab.
 type Snapshot struct {
-	URL   string     `json:"url"`
-	Title string     `json:"title"`
-	Nodes []SnapNode `json:"nodes"`
+	URL       string     `json:"url"`
+	Title     string     `json:"title"`
+	Nodes     []SnapNode `json:"nodes"`
+	Hash      string     `json:"hash,omitempty"`
+	Diff      string     `json:"diff,omitempty"`
+	Unchanged bool       `json:"unchanged,omitempty"`
 }
 
 var skipRoles = map[string]bool{
@@ -113,8 +116,8 @@ func (b *snapBuilder) add(n *accessibility.Node, depth int, role, name string) {
 		Ref:   ref,
 		Depth: depth,
 		Role:  role,
-		Name:  clipText(name, 120),
-		Value: clipText(axString(n.Value), 120),
+		Name:  clipText(name, 80),
+		Value: clipText(axString(n.Value), 80),
 		Props: axProps(n),
 	})
 }
@@ -181,8 +184,14 @@ func clipText(s string, n int) string {
 	return string(r[:n-1]) + "…"
 }
 
-// Text formats the snapshot as readable indented lines with refs.
+// Text formats the snapshot as readable indented lines with refs, or diff if present.
 func (s Snapshot) Text() string {
+	if s.Unchanged {
+		return "unchanged\n"
+	}
+	if s.Diff != "" {
+		return s.Diff
+	}
 	var b strings.Builder
 	if s.Title != "" {
 		b.WriteString(s.Title)

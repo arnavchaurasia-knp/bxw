@@ -31,3 +31,4 @@ $env:GOARCH = ""
 $env:CGO_ENABLED = ""
 
 Write-Host "Build completed successfully for $Version."
+

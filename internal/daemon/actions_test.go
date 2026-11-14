@@ -44,7 +44,7 @@ func TestActionsLiveEndToEnd(t *testing.T) {
 	}
 
 	// 1. Launch headless agent browser pointed at test server
-	if err := d.launch(true, ts.URL); err != nil {
+	if err := d.launch(true, ts.URL, false); err != nil {
 		t.Fatalf("launch headless %s: %v", targetBrowser.Name, err)
 	}
 	defer func() {
@@ -66,7 +66,7 @@ func TestActionsLiveEndToEnd(t *testing.T) {
 	tabID := tabs[0].ID
 
 	// 3. Take snapshot
-	snap, err := d.snapshot(tabID, 15*time.Second)
+	snap, err := d.snapshot(tabID, true, "", "", 15*time.Second)
 	if err != nil {
 		t.Fatalf("snapshot: %v", err)
 	}

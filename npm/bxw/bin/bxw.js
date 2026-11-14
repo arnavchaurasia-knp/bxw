@@ -22,7 +22,7 @@ try {
   if (fs.existsSync(candidate)) {
     binPath = candidate;
   }
-} catch (_) {}
+} catch (_) { }
 
 // 2. Fallback to local root build or sibling subpackage for development
 if (!binPath) {

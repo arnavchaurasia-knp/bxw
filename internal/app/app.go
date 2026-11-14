@@ -7,12 +7,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"bxw/internal/browser"
+	"bxw/internal/cache"
+	"bxw/internal/contextmgr"
 	"bxw/internal/daemon"
 	"bxw/internal/exit"
+	"bxw/internal/history"
+	"bxw/internal/osport"
+	"bxw/internal/perms"
 )
 
 // Version is overridden at build time via -ldflags "-X bxw/internal/app.Version=...".
@@ -31,6 +38,8 @@ func Run(args []string) error {
 		return runList(args[1:])
 	case "launch":
 		return runLaunch(args[1:])
+	case "login":
+		return runLogin(args[1:])
 	case "snapshot":
 		return runSnapshot(args[1:])
 	case "click":
@@ -45,6 +54,14 @@ func Run(args []string) error {
 		return runEval(args[1:])
 	case "open":
 		return runOpen(args[1:])
+	case "perms":
+		return runPerms(args[1:])
+	case "history":
+		return runHistory(args[1:])
+	case "context":
+		return runContext(args[1:])
+	case "clean":
+		return runClean(args[1:])
 	case "setup":
 		return runSetup(args[1:])
 	case "mcp":
@@ -69,16 +86,22 @@ usage:
   bxw list browsers                   list installed Chromium browsers
   bxw list profiles <browser>         list a browser's profiles
   bxw launch <browser> [url]          start an isolated agent instance (CDP on)
+  bxw login <browser> [url]           open persistent profile headed to log in once
   bxw list tabs [browser]             list open tabs of the bxw-managed instance
   bxw open <url> [--profile <name>]   open url in named profile window
   bxw setup <browser> [--revert]      enable/disable remote debugging on real profile
   bxw mcp [install [client]]          speak MCP over stdio or install into AI clients
-  bxw snapshot <tab> [--out <file>]   accessibility snapshot with stable element refs (e1, e2...)
+  bxw snapshot <tab> [flags]          accessibility snapshot with stable element refs (e1, e2...)
+                                      flags: --full, --ref <ref>, --find <text>, --out <file>
   bxw click <tab> <ref|sel> [--double] click an element by ref or CSS selector
   bxw fill <tab> <ref|sel> <val>...   fill form inputs, selects, or toggles
   bxw type <tab> <text> [--submit <k>] type text into active element
   bxw key <tab> <combo>               press key or combination (e.g. Enter, Control+A)
   bxw eval <tab> <expr>               evaluate JavaScript on the tab
+  bxw perms [list|grant|revoke]       inspect and manage capability permissions
+  bxw history [browser] [flags]       query navigation history (--since, --grep, --profile)
+  bxw context [browser] [--session id] view session context summary
+  bxw clean [--all]                   clean cache, stale state, and logs
   bxw stop <browser>                  stop the daemon
   bxw doctor                          self-check this machine
   bxw version
@@ -196,18 +219,21 @@ func runList(args []string) error {
 
 func runLaunch(args []string) error {
 	if len(args) < 1 {
-		return exit.New(exit.Usage, "usage: bxw launch <browser> [url] [--headless]")
+		return exit.New(exit.Usage, "usage: bxw launch <browser> [url] [--headless] [--real-profile]")
 	}
 	headless := false
+	realProfile := false
 	targetURL := "about:blank"
 	var browserName string
 
 	for _, a := range args {
 		if a == "--headless" {
 			headless = true
-		} else if browserName == "" {
+		} else if a == "--real-profile" {
+			realProfile = true
+		} else if browserName == "" && !strings.HasPrefix(a, "-") {
 			browserName = a
-		} else if targetURL == "about:blank" {
+		} else if targetURL == "about:blank" && !strings.HasPrefix(a, "-") {
 			targetURL = a
 		}
 	}
@@ -216,7 +242,16 @@ func runLaunch(args []string) error {
 	if !ok {
 		return exit.New(exit.NotFound, "browser %q not installed (try: bxw list browsers)", browserName)
 	}
-	data, err := daemon.Call(b.Name, "launch", map[string]any{"headless": headless, "url": targetURL})
+
+	if realProfile && b.Name != "brave" {
+		return exit.New(exit.User, "real-profile remote debugging is blocked on %s by Chromium 136; persistent profile is used instead", b.Label)
+	}
+
+	data, err := daemon.Call(b.Name, "launch", map[string]any{
+		"headless":     headless,
+		"url":          targetURL,
+		"real_profile": realProfile,
+	})
 	if err != nil {
 		return exit.New(exit.Upstream, "%v", err)
 	}
@@ -230,12 +265,59 @@ func runLaunch(args []string) error {
 	return nil
 }
 
+func runLogin(args []string) error {
+	if len(args) < 1 {
+		return exit.New(exit.Usage, "usage: bxw login <browser> [url]")
+	}
+	targetURL := "https://google.com"
+	var browserName string
+	for _, a := range args {
+		if browserName == "" && !strings.HasPrefix(a, "-") {
+			browserName = a
+		} else if !strings.HasPrefix(a, "-") {
+			targetURL = a
+		}
+	}
+
+	b, ok := browser.Find(browserName)
+	if !ok {
+		return exit.New(exit.NotFound, "browser %q not installed (try: bxw list browsers)", browserName)
+	}
+
+	fmt.Printf("Launching %s with persistent profile for login at %s...\n", b.Label, targetURL)
+	data, err := daemon.Call(b.Name, "launch", map[string]any{
+		"headless":     false,
+		"url":          targetURL,
+		"real_profile": false,
+	})
+	if err != nil {
+		return exit.New(exit.Upstream, "%v", err)
+	}
+	var res map[string]any
+	_ = json.Unmarshal(data, &res)
+	fmt.Printf("Persistent profile opened. Log into your accounts in the opened browser window.\nSession tokens will persist across future bxw runs.\n")
+	return nil
+}
+
 func runSnapshot(args []string) error {
 	var pos []string
-	var browserName, outFile string
+	var browserName, outFile, scopeRef, findQuery string
+	full := false
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
+		case "--full":
+			full = true
+		case "--ref":
+			if i+1 < len(args) {
+				scopeRef = args[i+1]
+				i++
+			}
+		case "--find":
+			if i+1 < len(args) {
+				findQuery = args[i+1]
+				i++
+			}
 		case "--browser":
 			if i+1 < len(args) {
 				browserName = args[i+1]
@@ -251,6 +333,10 @@ func runSnapshot(args []string) error {
 				browserName = strings.TrimPrefix(args[i], "--browser=")
 			} else if strings.HasPrefix(args[i], "--out=") {
 				outFile = strings.TrimPrefix(args[i], "--out=")
+			} else if strings.HasPrefix(args[i], "--ref=") {
+				scopeRef = strings.TrimPrefix(args[i], "--ref=")
+			} else if strings.HasPrefix(args[i], "--find=") {
+				findQuery = strings.TrimPrefix(args[i], "--find=")
 			} else if !strings.HasPrefix(args[i], "-") {
 				pos = append(pos, args[i])
 			}
@@ -267,7 +353,12 @@ func runSnapshot(args []string) error {
 		return err
 	}
 
-	data, err := daemon.Call(name, "snapshot", map[string]any{"tab": tab})
+	data, err := daemon.Call(name, "snapshot", map[string]any{
+		"tab":  tab,
+		"full": full,
+		"ref":  scopeRef,
+		"find": findQuery,
+	})
 	if err != nil {
 		return err
 	}
@@ -621,6 +712,182 @@ func runOpen(args []string) error {
 		profStr = fmt.Sprintf(" in %s (%s)", tab.Profile, tab.ProfileDir)
 	}
 	fmt.Printf("opened %s%s: %s (%s)\n", short(tab.ID), profStr, tab.Title, tab.URL)
+	return nil
+}
+
+func runPerms(args []string) error {
+	if len(args) == 0 || args[0] == "list" {
+		records := perms.Default().List()
+		if len(records) == 0 {
+			fmt.Println("(no permissions granted)")
+			return nil
+		}
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "ORIGIN\tCAPABILITY\tSTATE\tSCOPE\tEXPIRES")
+		for _, r := range records {
+			exp := "never"
+			if !r.ExpiresAt.IsZero() {
+				exp = r.ExpiresAt.Format("2006-01-02 15:04:05")
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", r.Origin, r.Capability, r.State, r.Scope, exp)
+		}
+		return w.Flush()
+	}
+
+	switch args[0] {
+	case "grant":
+		if len(args) < 3 {
+			return exit.New(exit.Usage, "usage: bxw perms grant <origin> <capability> [--always]")
+		}
+		origin := args[1]
+		capName := args[2]
+		scope := perms.ScopeSession
+		for _, a := range args[3:] {
+			if a == "--always" {
+				scope = perms.ScopeAlways
+			}
+		}
+		if err := perms.Default().Grant(origin, capName, scope, 24*time.Hour); err != nil {
+			return exit.New(exit.Internal, "grant permission: %v", err)
+		}
+		fmt.Printf("granted %s for %s (scope: %s)\n", capName, origin, scope)
+		return nil
+
+	case "revoke":
+		if len(args) < 2 {
+			return exit.New(exit.Usage, "usage: bxw perms revoke <origin> [capability]")
+		}
+		origin := args[1]
+		capName := "*"
+		if len(args) >= 3 {
+			capName = args[2]
+		}
+		if err := perms.Default().Revoke(origin, capName); err != nil {
+			return exit.New(exit.Internal, "revoke permission: %v", err)
+		}
+		fmt.Printf("revoked %s for %s\n", capName, origin)
+		return nil
+
+	default:
+		return exit.New(exit.Usage, "usage: bxw perms [list|grant|revoke]")
+	}
+}
+
+func runHistory(args []string) error {
+	var browserName string
+	var sinceStr, grepStr, profileStr string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--since":
+			if i+1 < len(args) {
+				sinceStr = args[i+1]
+				i++
+			}
+		case "--grep":
+			if i+1 < len(args) {
+				grepStr = args[i+1]
+				i++
+			}
+		case "--profile":
+			if i+1 < len(args) {
+				profileStr = args[i+1]
+				i++
+			}
+		default:
+			if strings.HasPrefix(args[i], "--since=") {
+				sinceStr = strings.TrimPrefix(args[i], "--since=")
+			} else if strings.HasPrefix(args[i], "--grep=") {
+				grepStr = strings.TrimPrefix(args[i], "--grep=")
+			} else if strings.HasPrefix(args[i], "--profile=") {
+				profileStr = strings.TrimPrefix(args[i], "--profile=")
+			} else if !strings.HasPrefix(args[i], "-") && browserName == "" {
+				browserName = args[i]
+			}
+		}
+	}
+
+	name, err := resolveBrowser(browserName)
+	if err != nil {
+		return err
+	}
+
+	filter := history.Filter{
+		Grep:    grepStr,
+		Profile: profileStr,
+	}
+	if sinceStr != "" {
+		if t, err := time.Parse(time.RFC3339, sinceStr); err == nil {
+			filter.Since = t
+		} else if d, err := time.ParseDuration(sinceStr); err == nil {
+			filter.Since = time.Now().Add(-d)
+		}
+	}
+
+	entries, err := history.Query(name, filter)
+	if err != nil {
+		return exit.New(exit.Internal, "query history: %v", err)
+	}
+	if len(entries) == 0 {
+		fmt.Println("(no history recorded)")
+		return nil
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "TIME\tPROFILE\tURL\tTITLE")
+	for _, e := range entries {
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", e.Timestamp.Format("2006-01-02 15:04:05"), e.Profile, e.URL, e.Title)
+	}
+	return w.Flush()
+}
+
+func runContext(args []string) error {
+	var sessionID string
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--session" && i+1 < len(args) {
+			sessionID = args[i+1]
+			i++
+		} else if strings.HasPrefix(args[i], "--session=") {
+			sessionID = strings.TrimPrefix(args[i], "--session=")
+		}
+	}
+
+	sc, err := contextmgr.LoadSession(sessionID)
+	if err != nil {
+		return exit.New(exit.Internal, "load context: %v", err)
+	}
+	fmt.Print(sc.Summary())
+	return nil
+}
+
+func runClean(args []string) error {
+	all := false
+	for _, a := range args {
+		if a == "--all" {
+			all = true
+		}
+	}
+
+	count, bytes, err := cache.Clean()
+	if err != nil {
+		return exit.New(exit.Internal, "clean cache: %v", err)
+	}
+	fmt.Printf("cleaned cache: removed %d blobs (%.2f MB)\n", count, float64(bytes)/(1024*1024))
+
+	if all {
+		p := osport.Current()
+		// Clean logs
+		logsDir := p.LogsDir()
+		if entries, err := os.ReadDir(logsDir); err == nil {
+			for _, e := range entries {
+				_ = os.Remove(filepath.Join(logsDir, e.Name()))
+			}
+		}
+		// Clean state
+		baseStateDir := filepath.Join(p.DataRoot(), "state")
+		_ = os.RemoveAll(baseStateDir)
+		_ = os.MkdirAll(baseStateDir, 0o755)
+		fmt.Println("cleaned logs and transient tab states")
+	}
 	return nil
 }
 

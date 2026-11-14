@@ -22,14 +22,63 @@ func (stubPlatform) ExpandEnv(s string) string            { return os.ExpandEnv(
 func (stubPlatform) Browsers() []BrowserDef               { return nil }
 func (stubPlatform) ResolveExe(BrowserDef) (string, bool) { return "", false }
 func (stubPlatform) LocalStatePath(dataDir string) string { return dataDir + "/Local State" }
-func (stubPlatform) Dir() string {
-	d := filepath.Join(os.Getenv("HOME"), ".config", "bxw")
+func (stubPlatform) DataRoot() string {
+	d := filepath.Join(os.Getenv("HOME"), ".local", "share", "bxw")
 	_ = os.MkdirAll(d, 0o755)
 	return d
 }
-func (stubPlatform) SocketPath(browser string) string { return filepath.Join(stubPlatform{}.Dir(), browser+".sock") }
-func (stubPlatform) LockPath(browser string) string   { return filepath.Join(stubPlatform{}.Dir(), browser+".lock") }
-func (stubPlatform) LogPath(browser string) string    { return filepath.Join(stubPlatform{}.Dir(), browser+".log") }
+func (stubPlatform) RunDir() string {
+	d := filepath.Join(stubPlatform{}.DataRoot(), "run")
+	_ = os.MkdirAll(d, 0o755)
+	return d
+}
+func (stubPlatform) ProfilesDir() string {
+	d := filepath.Join(stubPlatform{}.DataRoot(), "profiles")
+	_ = os.MkdirAll(d, 0o755)
+	return d
+}
+func (stubPlatform) ProfileDir(browser string) string {
+	d := filepath.Join(stubPlatform{}.ProfilesDir(), browser)
+	_ = os.MkdirAll(d, 0o755)
+	return d
+}
+func (stubPlatform) StateDir(browser string) string {
+	d := filepath.Join(stubPlatform{}.DataRoot(), "state", browser)
+	_ = os.MkdirAll(d, 0o755)
+	return d
+}
+func (stubPlatform) CacheDir() string {
+	d := filepath.Join(stubPlatform{}.DataRoot(), "cache")
+	_ = os.MkdirAll(d, 0o755)
+	return d
+}
+func (stubPlatform) LogsDir() string {
+	d := filepath.Join(stubPlatform{}.DataRoot(), "logs")
+	_ = os.MkdirAll(d, 0o755)
+	return d
+}
+func (stubPlatform) HistoryDir() string {
+	d := filepath.Join(stubPlatform{}.DataRoot(), "history")
+	_ = os.MkdirAll(d, 0o755)
+	return d
+}
+func (stubPlatform) ContextDir() string {
+	d := filepath.Join(stubPlatform{}.DataRoot(), "context")
+	_ = os.MkdirAll(d, 0o755)
+	return d
+}
+func (stubPlatform) ConfigFile() string {
+	return filepath.Join(stubPlatform{}.DataRoot(), "config.toml")
+}
+func (stubPlatform) PermissionsFile() string {
+	return filepath.Join(stubPlatform{}.DataRoot(), "permissions.json")
+}
+func (stubPlatform) Dir() string {
+	return stubPlatform{}.RunDir()
+}
+func (stubPlatform) SocketPath(browser string) string { return filepath.Join(stubPlatform{}.RunDir(), browser+".sock") }
+func (stubPlatform) LockPath(browser string) string   { return filepath.Join(stubPlatform{}.RunDir(), browser+".lock") }
+func (stubPlatform) LogPath(browser string) string    { return filepath.Join(stubPlatform{}.LogsDir(), browser+".log") }
 
 func (stubPlatform) Lock(path string) (func(), error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

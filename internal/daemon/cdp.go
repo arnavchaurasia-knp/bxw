@@ -12,14 +12,15 @@ import (
 	"strings"
 	"time"
 
+	"bxw/internal/exit"
 	"bxw/internal/osport"
 )
 
-// launch starts an isolated agent-profile browser instance with remote
-// debugging on a free fixed port. This is the safe path: it never touches the
-// user's real profile and triggers no "Allow" dialog. A fixed port + /json
-// probe sidesteps the DevToolsActivePort-not-written gotcha (anchor A9).
-func (d *Daemon) launch(headless bool, targetURL string) error {
+// launch starts an isolated or persistent profile browser instance with remote
+// debugging on a free fixed port. This is the browser-independent path (Pillar A):
+// it uses a dedicated persistent profile under %LOCALAPPDATA%\bxw\profiles\<browser>
+// so the user signs in once and credentials persist across sessions.
+func (d *Daemon) launch(headless bool, targetURL string, realProfile bool) error {
 	p := osport.Current()
 	port, err := freePort()
 	if err != nil {
@@ -28,10 +29,21 @@ func (d *Daemon) launch(headless bool, targetURL string) error {
 	if targetURL == "" {
 		targetURL = "about:blank"
 	}
-	agentDir := filepath.Join(p.LocalAppData(), "bxw", d.br.Name+"-agent")
+
+	var profileDir string
+	if realProfile {
+		if d.br.Name != "brave" {
+			return exit.New(exit.User, "real-profile remote debugging is blocked on %s by Chromium 136; use persistent profile instead (default)", d.br.Label)
+		}
+		profileDir = d.br.DataDir
+	} else {
+		profileDir = p.ProfileDir(d.br.Name)
+	}
+	_ = os.MkdirAll(profileDir, 0o755)
+
 	args := []string{
 		fmt.Sprintf("--remote-debugging-port=%d", port),
-		"--user-data-dir=" + agentDir,
+		"--user-data-dir=" + profileDir,
 		"--no-first-run",
 		"--no-default-browser-check",
 	}
@@ -170,7 +182,15 @@ func (d *Daemon) discoverPort() (int, error) {
 }
 
 func portFile(p osport.Platform, browser string) string {
-	return filepath.Join(p.LocalAppData(), "bxw", browser+"-agent.port")
+	newPath := filepath.Join(p.RunDir(), browser+".port")
+	if _, err := os.Stat(newPath); err == nil {
+		return newPath
+	}
+	legacyPath := filepath.Join(p.LocalAppData(), "bxw", browser+"-agent.port")
+	if _, err := os.Stat(legacyPath); err == nil {
+		return legacyPath
+	}
+	return newPath
 }
 
 func freePort() (int, error) {

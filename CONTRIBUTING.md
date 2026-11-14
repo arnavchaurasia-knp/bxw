@@ -98,3 +98,4 @@ node npm/bxw/bin/bxw.js doctor
 2. Ensure `go test ./...` and `go vet ./...` pass with zero warnings.
 3. Verify that `GOOS=linux go build ./...` succeeds.
 4. Open a pull request with a clear description of the problem solved and test steps performed.
+

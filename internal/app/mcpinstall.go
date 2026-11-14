@@ -129,3 +129,4 @@ func addServerToConfig(configPath, serverName string, serverDef map[string]any) 
 	}
 	return os.Rename(tmp, configPath)
 }
+

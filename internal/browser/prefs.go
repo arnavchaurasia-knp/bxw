@@ -119,3 +119,4 @@ func setPath(m map[string]any, path []string, v any) {
 	}
 	m[path[len(path)-1]] = v
 }
+

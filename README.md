@@ -11,9 +11,12 @@ Built in clean-room Go, `bxw` runs as a single static binary with no external ru
 ## Features
 
 - **Windows-First Discovery**: Automatically detects Microsoft Edge, Brave, Google Chrome, Vivaldi, and Chromium via registry `App Paths` and discovers all user profiles (`Default`, `Profile 1`, etc.) from `Local State`.
-- **Two Execution Modes**:
-  - **Isolated Agent Sandbox (`bxw launch`)**: Creates an ephemeral, isolated profile on a dynamic CDP port. Perfect for unauthenticated scraping, testing, or sandboxed browsing.
-  - **Real Authenticated Profile (`bxw setup`)**: Opts into Chromium's native remote debugging flag (`devtools.remote_debugging.user-enabled`) so your agent can navigate internal dashboards, Google Workspace, GitHub, or Jira using your real logged-in sessions.
+- **Browser-Independent Persistent Profiles (`bxw login`)**: Bypasses Chromium 136's default-profile remote debugging block. Users log in once in an isolated, persistent profile directory (`%LOCALAPPDATA%\bxw\profiles\<browser>`). Cookies and authentication tokens persist across runs without touching the main personal browser directory.
+- **Token-Efficient Diff Snapshots**: Emits compact deltas (`+`, `-`, `~`) against cached baselines (`state/<browser>/<tab>.json`) or returns `unchanged`, slashing agent token usage by 10–50× on iterative turns.
+- **Scoping & Filtered Queries**: `--ref <ref>` captures a specific subtree; `--find <query>` locates matching nodes and their ancestors.
+- **Content-Addressed Blob Cache (`bxw://cache/<hash>`)**: Large artifacts (screenshots, full HTML) are saved to disk with SHA-256 addresses and referenced via MCP resource URIs rather than blowing context windows with megabytes of base64 data.
+- **Risk-Gated Capabilities & Permissions (`bxw perms`)**: W3C-style origin permission gating (`form_submit`, `purchase`, `delete`, `download`, `enter_credentials`, `cross_origin_nav`) preventing unintended mutations or data egress.
+- **Audit Logging & Context Store**: Append-only navigation log (`history/<browser>.jsonl`) and durable agent session store (`context/<session>.json`) for cross-turn memory and recovery.
 - **Accessibility Snapshots**: Walks the DOM AXTree, pruning noise (`generic`, `none`, inline text nodes) and assigns concise references:
   ```text
   [e1] heading "Sign In"
@@ -22,14 +25,12 @@ Built in clean-room Go, `bxw` runs as a single static binary with no external ru
   [e4] checkbox "Remember me" [checked]
   [e5] button "Submit"
   ```
-- **Ref-Based Precision Actions**: Tag elements in DOM, compute center coordinates, and dispatch real mouse and keyboard events:
-  - `bxw click e5`
-  - `bxw fill e2 user@example.com`
-  - `bxw type e3 s3cr3t --submit`
-  - `bxw key Enter`
-- **Profile Correlation via Nonce Probe**: Dynamically correlates opaque Chromium `BrowserContextID`s with profile directories, allowing `bxw open <browser> <url> --profile "Work"` to open tabs directly in the requested profile.
-- **Model Context Protocol (MCP) Server**: Built-in JSON-RPC 2.0 stdio server exposing 9 core tools to any MCP-compliant AI assistant.
-- **One-Command MCP Installer**: `bxw mcp install` automatically configures Claude Desktop, Cursor, and Antigravity.
+- **Ref-Based Precision Actions**: Tag elements in DOM, compute center coordinates, and dispatch real mouse and keyboard events with terse 1-line feedback (`clicked e5 -> 2 nodes changed`):
+  - `bxw click <tab> e5`
+  - `bxw fill <tab> e2 user@example.com`
+  - `bxw type <tab> s3cr3t --submit Enter`
+  - `bxw key <tab> Enter`
+- **Model Context Protocol (MCP) Server**: Built-in JSON-RPC 2.0 stdio server exposing 10 core tools + resource handlers to Claude Desktop, Cursor, and Antigravity.
 - **AF_UNIX Singleton Daemon**: Manages persistent WebSocket multiplexing to CDP behind a lightweight background daemon over Windows AF_UNIX domain sockets.
 
 ---
