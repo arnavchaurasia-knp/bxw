@@ -425,7 +425,11 @@ func (d *Daemon) fill(tabID string, pairs [][2]string, timeout time.Duration) (A
 const fieldKindJS = `(el => {
 	if (!el) return "none";
 	if (el.tagName === "SELECT") return "select";
-	if (el.tagName === "INPUT" && (el.type === "checkbox" || el.type === "radio")) return el.type;
+	if (el.tagName === "INPUT") {
+		const t = (el.type || "").toLowerCase();
+		if (t === "checkbox" || t === "radio") return t;
+		if (["date", "time", "datetime-local", "month", "week", "color", "range"].includes(t)) return "picker";
+	}
 	const role = el.getAttribute("role");
 	if (role === "checkbox" || role === "switch" || role === "radio") return "checkbox";
 	return "text";
@@ -439,6 +443,22 @@ const selectOptionJS = `((el, v) => {
 	el.dispatchEvent(new Event("input", {bubbles: true}));
 	el.dispatchEvent(new Event("change", {bubbles: true}));
 	return true;
+})(document.querySelector(%s), %s)`
+
+const fillPickerJS = `((el, v) => {
+	if (!el) return {ok: false, err: "element not found"};
+	try {
+		el.focus();
+		el.value = v;
+		el.dispatchEvent(new Event("input", {bubbles: true}));
+		el.dispatchEvent(new Event("change", {bubbles: true}));
+		if (v !== "" && (!el.value || el.value === "")) {
+			return {ok: false, err: "value " + JSON.stringify(v) + " did not stick to input[type=" + el.type + "]"};
+		}
+		return {ok: true, val: el.value};
+	} catch (e) {
+		return {ok: false, err: e.message};
+	}
 })(document.querySelector(%s), %s)`
 
 const checkedJS = `(el => el ? (el.checked === true || el.getAttribute("aria-checked") === "true") : false)(document.querySelector(%s))`
@@ -459,6 +479,21 @@ func fillOne(ctx context.Context, sess *tabSession, el, value string, timeout ti
 	}
 
 	switch kind {
+	case "picker":
+		v, _ := json.Marshal(value)
+		var res struct {
+			OK  bool   `json:"ok"`
+			Val string `json:"val"`
+			Err string `json:"err"`
+		}
+		if err := sess.eval(ctx, fmt.Sprintf(fillPickerJS, q, v), &res); err != nil {
+			return exit.New(exit.Upstream, "fill picker %s: %v", el, err)
+		}
+		if !res.OK {
+			return exit.New(exit.User, "failed to fill %s: %s", el, res.Err)
+		}
+		return nil
+
 	case "select":
 		v, _ := json.Marshal(value)
 		var ok bool

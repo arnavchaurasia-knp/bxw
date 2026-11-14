@@ -117,7 +117,7 @@ func runLiveActionsOnBrowser(t *testing.T, targetBrowser browser.Browser) {
 
 	var inputRef, buttonRef string
 	for _, n := range snap.Nodes {
-		if n.Role == "textbox" {
+		if n.Role == "textbox" && (strings.Contains(n.Name, "Username") || inputRef == "") {
 			inputRef = n.Ref
 		}
 		if n.Role == "button" && strings.Contains(n.Name, "Submit") {
@@ -163,6 +163,20 @@ func runLiveActionsOnBrowser(t *testing.T, targetBrowser browser.Browser) {
 		t.Fatalf("expected 'Submitted: Alice', got %q", resultText)
 	}
 	t.Logf("Success! Live browser action verified. Result: %s", resultText)
+
+	// Test L4: fill on date/time picker input
+	_, err = d.fill(tabID, [][2]string{{"#time-input", "14:30"}}, 10*time.Second)
+	if err != nil {
+		t.Fatalf("fill #time-input: %v", err)
+	}
+	var timeVal string
+	if err := sess.eval(ctx, `document.getElementById('time-input').value`, &timeVal); err != nil {
+		t.Fatalf("eval time value: %v", err)
+	}
+	if timeVal != "14:30" {
+		t.Fatalf("expected time value '14:30', got %q", timeVal)
+	}
+	t.Logf("Time input verified: %s", timeVal)
 
 	// 7. Test generic CDP dispatch (W1)
 	resp := d.dispatch(Request{

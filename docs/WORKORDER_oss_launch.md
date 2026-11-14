@@ -32,7 +32,7 @@ Status legend: ⬜ not started · 🔄 in progress · ✅ done · ❌ blocked (w
 | L1 | CI is green on the real repo | verify | ✅ | yes | ✅ |
 | L2 | Release pipeline produces working binaries | verify | ✅ | yes | ✅ |
 | L3 | `npx bxw mcp` works from a clean machine | verify | ✅ | yes | ✅ |
-| L4 | Fix: `fill` on `date`/`time`/`color` inputs | bug | ⬜ | ⬜ | ⬜ |
+| L4 | Fix: `fill` on `date`/`time`/`color` inputs | bug | ✅ | yes | ✅ |
 | L5 | Fix: `open` profile-probe timeout on fresh profile | bug | ⬜ | ⬜ | ⬜ |
 | L6 | Fix: `close_tab` on last tab — clear UX | bug | ⬜ | ⬜ | ⬜ |
 | L7 | Test: F5 wholesale-diff threshold | test | ⬜ | ⬜ | ⬜ |
@@ -165,16 +165,16 @@ $ '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"20
 ---
 
 ## L4 — Fix: `fill` on `date` / `time` / `color` inputs
-**Status:** ⬜
+**Status:** ✅
 **Why:** live test found `fill` on `input[type=time]` reports "filled 1 field(s)" but the value does
 not stick (reads back empty). Native pickers need a real input/change event, not just `.value=`.
 
 **Checklist**
-- [ ] In `internal/daemon/actions.go` `fillOne`, after setting value on `date`/`time`/`datetime-local`/
+- [x] In `internal/daemon/actions.go` `fillOne`, after setting value on `date`/`time`/`datetime-local`/
       `month`/`week`/`color`/`range` inputs, dispatch `input` then `change` events
       (`el.dispatchEvent(new Event('input',{bubbles:true}))` + same for `'change'`).
-- [ ] Read the value back after setting; if still empty, return an error instead of a false success.
-- [ ] Verify it does not regress text/checkbox/select fills.
+- [x] Read the value back after setting; if still empty, return an error instead of a false success.
+- [x] Verify it does not regress text/checkbox/select fills.
 
 **Implementation prompt:** read `fillOne` in `internal/daemon/actions.go`. The set likely does
 `el.value = v`. Wrap so that for the picker input types it also fires bubbling `input`+`change`
@@ -183,7 +183,17 @@ test against a `data:` URL form with a `<input type=time>` asserting the value s
 
 **Acceptance:** `bxw fill <tab> <time-selector> 14:30` then `bxw eval <tab> "document.querySelector(...).value"`
 returns `14:30`.
-**Evidence:** _paste fill + eval readback_
+**Evidence:**
+```
+$ bxw fill 32A5705B "#t" "14:30" --browser edge
+filled 1 field(s)
+
+$ bxw eval 32A5705B "document.querySelector('#t').value" --browser edge
+"14:30"
+
+$ bxw fill 080D340D "#t" "not-a-time" --browser edge
+bxw: failed to fill #t: value "not-a-time" did not stick to input[type=time]
+```
 
 ---
 
