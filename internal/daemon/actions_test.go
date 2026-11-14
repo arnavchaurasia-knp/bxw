@@ -369,4 +369,39 @@ func TestActionsLiveEndToEnd(t *testing.T) {
 		t.Fatalf("dispatch close_tab error: %s", closeResp.Error)
 	}
 	t.Logf("close_tab verified: %s", string(closeResp.Data))
+
+	// Test W10 console dispatch
+	_ = d.dispatch(Request{
+		Op: "eval",
+		Args: map[string]any{
+			"tab":    tabID,
+			"script": `console.error("test error message from page")`,
+		},
+	})
+	time.Sleep(150 * time.Millisecond)
+
+	consoleResp := d.dispatch(Request{
+		Op: "console",
+		Args: map[string]any{
+			"tab": tabID,
+		},
+	})
+	if consoleResp.Error != "" {
+		t.Fatalf("dispatch console error: %s", consoleResp.Error)
+	}
+	var consoleLogs []map[string]any
+	if err := json.Unmarshal(consoleResp.Data, &consoleLogs); err != nil {
+		t.Fatalf("unmarshal console logs: %v", err)
+	}
+	foundError := false
+	for _, l := range consoleLogs {
+		if txt, ok := l["text"].(string); ok && strings.Contains(txt, "test error message") {
+			foundError = true
+			break
+		}
+	}
+	if !foundError {
+		t.Fatalf("expected to find test error message in console logs, got: %+v", consoleLogs)
+	}
+	t.Logf("console verified: found error log in %d entries", len(consoleLogs))
 }

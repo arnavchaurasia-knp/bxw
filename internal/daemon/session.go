@@ -197,6 +197,9 @@ type tabSession struct {
 
 	refs      map[string]cdp.BackendNodeID
 	refLoader cdp.LoaderID
+
+	consoleBuf *ringBuffer
+	netBuf     *ringBuffer
 }
 
 func (sess *tabSession) watchDialogs(ctx context.Context) {

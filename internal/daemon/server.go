@@ -15,7 +15,10 @@ import (
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/dom"
 	"github.com/chromedp/cdproto/emulation"
+	cdplog "github.com/chromedp/cdproto/log"
+	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/page"
+	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/cdproto/target"
 
 	"bxw/internal/browser"
@@ -465,6 +468,22 @@ func (d *Daemon) dispatch(req Request) Response {
 		data, _ := json.Marshal(map[string]any{"action": action, "handled": true})
 		return Response{Data: data}
 
+	case "console":
+		tab, _ := req.Args["tab"].(string)
+		level, _ := req.Args["level"].(string)
+		var limit int
+		if lVal, ok := req.Args["limit"].(float64); ok {
+			limit = int(lVal)
+		} else if lInt, ok := req.Args["limit"].(int); ok {
+			limit = lInt
+		}
+		logs, err := d.console(tab, level, limit)
+		if err != nil {
+			return errorResponse(err)
+		}
+		data, _ := json.Marshal(logs)
+		return Response{Data: data}
+
 	case "cdp":
 		tab, _ := req.Args["tab"].(string)
 		method, _ := req.Args["method"].(string)
@@ -577,14 +596,20 @@ func (d *Daemon) tabSession(tabID string) (*tabSession, error) {
 	_, _ = cdp.Call(ctx, tc, emulation.SetFocusEmulationEnabled, emulation.SetFocusEmulationEnabledParams{Enabled: true})
 	_, _ = cdp.Call(ctx, tc, dom.Enable, dom.EnableParams{})
 	_, _ = cdp.Call(ctx, tc, accessibility.Enable, cdp.Empty{})
+	_, _ = cdp.Call(ctx, tc, runtime.Enable, cdp.Empty{})
+	_, _ = cdp.Call(ctx, tc, cdplog.Enable, cdp.Empty{})
+	_, _ = cdp.Call(ctx, tc, network.Enable, network.EnableParams{})
 
 	sess := &tabSession{
-		id:    tab.ID,
-		wsURL: tab.WS,
-		conn:  tc,
-		refs:  make(map[string]cdp.BackendNodeID),
+		id:         tab.ID,
+		wsURL:      tab.WS,
+		conn:       tc,
+		refs:       make(map[string]cdp.BackendNodeID),
+		consoleBuf: newRingBuffer(500),
+		netBuf:     newRingBuffer(500),
 	}
 	sess.watchDialogs(context.Background())
+	sess.startDebugCapture(context.Background())
 
 	d.mu.Lock()
 	d.sessions[tab.ID] = sess

@@ -409,6 +409,44 @@ func mcpTools() []mcpTool {
 			},
 		},
 		{
+			Name:        "console",
+			Description: "Tail console logs and runtime exceptions captured from a tab.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"tab":     str("Tab ID."),
+					"level":   str("Optional log level filter: 'info', 'warning', 'error', 'log'."),
+					"limit":   number("Max entries to return (default 50)."),
+					"browser": str("Browser name."),
+				},
+				"required": []string{"tab"},
+			},
+			run: func(args map[string]any) (string, error) {
+				bName, err := resolveBrowser(argString(args, "browser"))
+				if err != nil {
+					return "", err
+				}
+				var limit int
+				if l, ok := args["limit"].(float64); ok {
+					limit = int(l)
+				}
+				cArgs := map[string]any{
+					"tab": argString(args, "tab"),
+				}
+				if lvl := argString(args, "level"); lvl != "" {
+					cArgs["level"] = lvl
+				}
+				if limit > 0 {
+					cArgs["limit"] = limit
+				}
+				data, err := daemon.Call(bName, "console", cArgs)
+				if err != nil {
+					return "", err
+				}
+				return string(data), nil
+			},
+		},
+		{
 			Name:        "snapshot",
 			Description: "Take an accessibility snapshot of a tab, returning an indented element tree with stable refs (e1, e2...). Returns diffs vs previous snapshot by default to save tokens.",
 			InputSchema: map[string]any{

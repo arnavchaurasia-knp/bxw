@@ -74,6 +74,8 @@ func Run(args []string) error {
 		return runRead(args[1:])
 	case "dialog":
 		return runDialog(args[1:])
+	case "console":
+		return runConsole(args[1:])
 	case "perms":
 		return runPerms(args[1:])
 	case "history":
@@ -114,6 +116,7 @@ usage:
   bxw wait <tab> [--selector s|--text t|--load|--ms N]   wait for a condition
   bxw read <tab> [--ref e12] [--max 20000]   read the page's visible text
   bxw dialog <tab> <accept|dismiss> [--text t] respond to a JavaScript dialog
+  bxw console <tab> [--level lvl] [--limit N]  tail page console and error logs
   bxw setup <browser> [--revert]      enable/disable remote debugging on real profile
   bxw mcp [install [client]]          speak MCP over stdio or install into AI clients
   bxw snapshot <tab> [flags]          accessibility snapshot with stable element refs (e1, e2...)
@@ -1354,6 +1357,91 @@ func runDialog(args []string) error {
 
 	fmt.Printf("dialog %s -> handled\n", action)
 	_ = data
+	return nil
+}
+
+func runConsole(args []string) error {
+	var pos []string
+	var browserName, level string
+	var limit int
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--browser":
+			if i+1 < len(args) {
+				browserName = args[i+1]
+				i++
+			}
+		case "--level":
+			if i+1 < len(args) {
+				level = args[i+1]
+				i++
+			}
+		case "--limit":
+			if i+1 < len(args) {
+				fmt.Sscanf(args[i+1], "%d", &limit)
+				i++
+			}
+		default:
+			if strings.HasPrefix(args[i], "--browser=") {
+				browserName = strings.TrimPrefix(args[i], "--browser=")
+			} else if strings.HasPrefix(args[i], "--level=") {
+				level = strings.TrimPrefix(args[i], "--level=")
+			} else if strings.HasPrefix(args[i], "--limit=") {
+				fmt.Sscanf(strings.TrimPrefix(args[i], "--limit="), "%d", &limit)
+			} else if !strings.HasPrefix(args[i], "-") {
+				pos = append(pos, args[i])
+			}
+		}
+	}
+
+	if len(pos) < 1 {
+		return exit.New(exit.Usage, "usage: bxw console <tab> [--level <info|warning|error>] [--limit <n>] [--browser <name>]")
+	}
+
+	tab := pos[0]
+	name, err := resolveBrowser(browserName)
+	if err != nil {
+		return err
+	}
+
+	cArgs := map[string]any{"tab": tab}
+	if level != "" {
+		cArgs["level"] = level
+	}
+	if limit > 0 {
+		cArgs["limit"] = limit
+	}
+
+	data, err := daemon.Call(name, "console", cArgs)
+	if err != nil {
+		return err
+	}
+
+	var logs []map[string]any
+	if err := json.Unmarshal(data, &logs); err == nil {
+		if len(logs) == 0 {
+			fmt.Println("(no console messages)")
+			return nil
+		}
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "TIME\tLEVEL\tMESSAGE\tLOCATION")
+		for _, l := range logs {
+			tStr, _ := l["t"].(string)
+			if len(tStr) > 19 {
+				tStr = tStr[11:19]
+			}
+			loc := ""
+			if url, ok := l["url"].(string); ok && url != "" {
+				line, _ := l["line"].(float64)
+				loc = fmt.Sprintf("%s:%d", filepath.Base(url), int(line))
+			}
+			fmt.Fprintf(w, "%s\t%v\t%v\t%s\n", tStr, l["level"], l["text"], loc)
+		}
+		return w.Flush()
+	}
+
+	fmt.Println(string(data))
 	return nil
 }
 

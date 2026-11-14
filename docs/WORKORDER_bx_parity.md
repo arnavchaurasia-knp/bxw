@@ -38,7 +38,7 @@ Status legend: ⬜ not started · 🔄 in progress · ✅ done · ❌ blocked (w
 | W7 | `upload` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W8 | `dialog` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W9 | `close_tab` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| W10 | `console` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| W10 | `console` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W11 | `network` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | W12 | `storage` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | W13 | `performance` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -250,10 +250,10 @@ Import `github.com/chromedp/cdproto/page`, `github.com/chromedp/cdproto/cdp`, `c
 ---
 
 ## W10 — `console` (+ shared debug capture subsystem)
-**Status:** ⬜ not started — **builds the capture buffers W11 reuses.**
+**Status:** ✅ done
 **Checklist**
-- [ ] ring buffer + session subscriptions · [ ] daemon op · [ ] CLI · [ ] MCP · [ ] usage · [ ] test · [ ] committed
-- Evidence: _()_
+- [x] ring buffer + session subscriptions · [x] daemon op · [x] CLI · [x] MCP · [x] usage · [x] test · [x] committed
+- Evidence: _(verified via TestActionsLiveEndToEnd: console.error captured in ringBuffer, console dispatch returned error record)_
 
 **Implementation prompt:**
 1. Create `internal/daemon/debug.go`. Define a small bounded buffer:
