@@ -40,7 +40,7 @@ Status legend: ⬜ not started · 🔄 in progress · ✅ done · ❌ blocked (w
 | W9 | `close_tab` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W10 | `console` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W11 | `network` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| W12 | `storage` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| W12 | `storage` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W13 | `performance` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | W14 | `emulate` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | W15 | MCP parity (`doctor`,`setup`,`launch`,`list_profiles`) | n/a | n/a | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -291,10 +291,10 @@ func (r *ringBuffer) list() []map[string]any { r.mu.Lock(); defer r.mu.Unlock();
 ---
 
 ## W12 — `storage`
-**Status:** ⬜ not started
+**Status:** ✅ done
 **Checklist**
-- [ ] daemon op · [ ] CLI · [ ] MCP · [ ] usage · [ ] test · [ ] committed
-- Evidence: _()_
+- [x] daemon op · [x] CLI · [x] MCP · [x] usage · [x] test · [x] committed
+- Evidence: _(verified via TestActionsLiveEndToEnd: localStorage key/val and cookies retrieved without logging to disk)_
 
 **Implementation prompt:**
 1. `debug.go`: `func (d *Daemon) storage(tabID string, timeout) (map[string]any, error)`. `sess, _ := d.tabSession`; lock. Cookies: `cdp.Call(ctx, sess.conn, network.GetCookies, network.GetCookiesParams{})`. Local/session: `sess.eval(ctx, "JSON.stringify({local:{...localStorage},session:{...sessionStorage}})", &blob)` then unmarshal. Return `{cookies, local, session}`.

@@ -489,6 +489,31 @@ func mcpTools() []mcpTool {
 			},
 		},
 		{
+			Name:        "storage",
+			Description: "Inspect cookies, localStorage, and sessionStorage for a tab.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"tab":     str("Tab ID."),
+					"browser": str("Browser name."),
+				},
+				"required": []string{"tab"},
+			},
+			run: func(args map[string]any) (string, error) {
+				bName, err := resolveBrowser(argString(args, "browser"))
+				if err != nil {
+					return "", err
+				}
+				data, err := daemon.Call(bName, "storage", map[string]any{
+					"tab": argString(args, "tab"),
+				})
+				if err != nil {
+					return "", err
+				}
+				return string(data), nil
+			},
+		},
+		{
 			Name:        "snapshot",
 			Description: "Take an accessibility snapshot of a tab, returning an indented element tree with stable refs (e1, e2...). Returns diffs vs previous snapshot by default to save tokens.",
 			InputSchema: map[string]any{

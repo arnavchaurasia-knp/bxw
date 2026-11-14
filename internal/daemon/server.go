@@ -501,6 +501,15 @@ func (d *Daemon) dispatch(req Request) Response {
 		data, _ := json.Marshal(res)
 		return Response{Data: data}
 
+	case "storage":
+		tab, _ := req.Args["tab"].(string)
+		res, err := d.storage(tab, timeout)
+		if err != nil {
+			return errorResponse(err)
+		}
+		data, _ := json.Marshal(res)
+		return Response{Data: data}
+
 	case "cdp":
 		tab, _ := req.Args["tab"].(string)
 		method, _ := req.Args["method"].(string)

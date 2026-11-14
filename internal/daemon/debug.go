@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"sync"
 	"time"
@@ -319,4 +320,41 @@ func (d *Daemon) network(tabID, filter, requestID string, limit int) (any, error
 		filtered = filtered[len(filtered)-limit:]
 	}
 	return filtered, nil
+}
+
+func (d *Daemon) storage(tabID string, timeout time.Duration) (map[string]any, error) {
+	sess, err := d.tabSession(tabID)
+	if err != nil {
+		return nil, err
+	}
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	cookies, err := cdp.Call(ctx, sess.conn, network.GetCookies, network.GetCookiesParams{})
+	if err != nil {
+		return nil, exit.New(exit.Upstream, "get cookies: %v", err)
+	}
+
+	var webStorage struct {
+		Local   map[string]any `json:"local"`
+		Session map[string]any `json:"session"`
+	}
+	storageScript := `JSON.stringify({local: {...localStorage}, session: {...sessionStorage}})`
+	var storageRaw string
+	_ = sess.eval(ctx, storageScript, &storageRaw)
+	if storageRaw != "" {
+		_ = json.Unmarshal([]byte(storageRaw), &webStorage)
+	}
+
+	return map[string]any{
+		"cookies": cookies.Cookies,
+		"local":   webStorage.Local,
+		"session": webStorage.Session,
+	}, nil
 }

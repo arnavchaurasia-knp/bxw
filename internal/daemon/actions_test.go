@@ -432,4 +432,34 @@ func TestActionsLiveEndToEnd(t *testing.T) {
 		t.Fatal("expected at least one captured network request")
 	}
 	t.Logf("network verified: captured %d requests", len(netRequests))
+
+	// Test W12 storage dispatch
+	_ = d.dispatch(Request{
+		Op: "eval",
+		Args: map[string]any{
+			"tab":    tabID,
+			"script": `localStorage.setItem('bxw_test_key', 'bxw_test_val'); document.cookie = 'bxw_test_cookie=abc; path=/';`,
+		},
+	})
+	storageResp := d.dispatch(Request{
+		Op: "storage",
+		Args: map[string]any{
+			"tab": tabID,
+		},
+	})
+	if storageResp.Error != "" {
+		t.Fatalf("dispatch storage error: %s", storageResp.Error)
+	}
+	var storageData struct {
+		Cookies []map[string]any `json:"cookies"`
+		Local   map[string]any   `json:"local"`
+		Session map[string]any   `json:"session"`
+	}
+	if err := json.Unmarshal(storageResp.Data, &storageData); err != nil {
+		t.Fatalf("unmarshal storage: %v", err)
+	}
+	if storageData.Local["bxw_test_key"] != "bxw_test_val" {
+		t.Fatalf("expected localStorage['bxw_test_key'] == 'bxw_test_val', got: %v", storageData.Local)
+	}
+	t.Logf("storage verified: local keys=%d, cookies=%d", len(storageData.Local), len(storageData.Cookies))
 }

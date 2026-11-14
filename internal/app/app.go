@@ -78,6 +78,8 @@ func Run(args []string) error {
 		return runConsole(args[1:])
 	case "network":
 		return runNetwork(args[1:])
+	case "storage":
+		return runStorage(args[1:])
 	case "perms":
 		return runPerms(args[1:])
 	case "history":
@@ -120,6 +122,7 @@ usage:
   bxw dialog <tab> <accept|dismiss> [--text t] respond to a JavaScript dialog
   bxw console <tab> [--level lvl] [--limit N]  tail page console and error logs
   bxw network <tab> [--filter s] [--id reqID]  inspect captured network requests and responses
+  bxw storage <tab>                           inspect cookies, localStorage and sessionStorage
   bxw setup <browser> [--revert]      enable/disable remote debugging on real profile
   bxw mcp [install [client]]          speak MCP over stdio or install into AI clients
   bxw snapshot <tab> [flags]          accessibility snapshot with stable element refs (e1, e2...)
@@ -1551,6 +1554,52 @@ func runNetwork(args []string) error {
 			fmt.Fprintf(w, "%v\t%v\t%s\t%v\t%s\t%s\n", r["id"], r["method"], status, r["type"], dur, urlStr)
 		}
 		return w.Flush()
+	}
+
+	fmt.Println(string(data))
+	return nil
+}
+
+func runStorage(args []string) error {
+	var pos []string
+	var browserName string
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--browser":
+			if i+1 < len(args) {
+				browserName = args[i+1]
+				i++
+			}
+		default:
+			if strings.HasPrefix(args[i], "--browser=") {
+				browserName = strings.TrimPrefix(args[i], "--browser=")
+			} else if !strings.HasPrefix(args[i], "-") {
+				pos = append(pos, args[i])
+			}
+		}
+	}
+
+	if len(pos) < 1 {
+		return exit.New(exit.Usage, "usage: bxw storage <tab> [--browser <name>]")
+	}
+
+	tab := pos[0]
+	name, err := resolveBrowser(browserName)
+	if err != nil {
+		return err
+	}
+
+	data, err := daemon.Call(name, "storage", map[string]any{"tab": tab})
+	if err != nil {
+		return err
+	}
+
+	var res map[string]any
+	if err := json.Unmarshal(data, &res); err == nil {
+		pretty, _ := json.MarshalIndent(res, "", "  ")
+		fmt.Println(string(pretty))
+		return nil
 	}
 
 	fmt.Println(string(data))
