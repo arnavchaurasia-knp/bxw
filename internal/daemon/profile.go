@@ -81,6 +81,11 @@ func (d *Daemon) profileNames() map[string]string {
 func (d *Daemon) resolveProfile(ref string) (browser.Profile, error) {
 	ps, err := browser.Profiles(d.br)
 	if err != nil {
+		// When Local State does not exist yet (e.g. brand-new profile or CI runner),
+		// default to the standard "Default" profile.
+		if ref == "" || strings.EqualFold(ref, "default") {
+			return browser.Profile{Dir: "Default", Name: "Default"}, nil
+		}
 		return browser.Profile{}, err
 	}
 	if len(ps) == 0 {
