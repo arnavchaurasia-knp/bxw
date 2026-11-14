@@ -15,6 +15,7 @@ import (
 	"github.com/chromedp/cdproto/target"
 
 	"bxw/internal/browser"
+	"bxw/internal/config"
 	"bxw/internal/exit"
 	"bxw/internal/osport"
 )
@@ -304,6 +305,11 @@ func (d *Daemon) open(profileRef, rawURL string, timeout time.Duration) (Tab, er
 		URL:        rawURL,
 		Profile:    prof.Name,
 		ProfileDir: prof.Dir,
+	}
+
+	// Follow mode: bring newly opened tab to front
+	if config.IsFollowEnabled() {
+		_, _ = cdp.Call(ctx, bconn, target.ActivateTarget, target.ActivateTargetParams{TargetID: newTargetID})
 	}
 
 	return tab, nil

@@ -14,6 +14,7 @@ import (
 	"github.com/chromedp/cdproto/input"
 	"github.com/chromedp/cdproto/page"
 
+	"bxw/internal/config"
 	"bxw/internal/exit"
 	"bxw/internal/history"
 )
@@ -97,6 +98,11 @@ func (d *Daemon) actOn(tabID string, timeout time.Duration, fn func(ctx context.
 	r := ActResult{}
 	r.Navigated = sess.loaderID(actx) != loader
 	r.URL, r.Title = sess.location(actx)
+
+	// Follow mode: bring tab to front if enabled
+	if config.IsFollowEnabled() {
+		_, _ = cdp.Call(ctx, sess.conn, page.BringToFront, cdp.Empty{})
+	}
 
 	// Check post-action node changes against stored baseline
 	if base, err := LoadTabState(d.br.Name, tabID); err == nil && len(base.Nodes) > 0 {

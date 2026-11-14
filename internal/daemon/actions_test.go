@@ -523,4 +523,18 @@ func TestActionsLiveEndToEnd(t *testing.T) {
 		t.Fatalf("dispatch reset emulate error: %s", resetResp.Error)
 	}
 	t.Logf("emulate verified: mobile innerWidth=390, reset success")
+
+	// Test W16 follow mode dispatch
+	gotoFollowResp := d.dispatch(Request{
+		Op: "goto",
+		Args: map[string]any{
+			"tab":    tabID,
+			"url":    ts.URL + "/form",
+			"follow": true,
+		},
+	})
+	if gotoFollowResp.Error != "" {
+		t.Fatalf("dispatch goto with follow error: %s", gotoFollowResp.Error)
+	}
+	t.Logf("follow verified: goto with follow=true succeeded")
 }

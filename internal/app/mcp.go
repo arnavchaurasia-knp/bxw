@@ -241,6 +241,7 @@ func mcpTools() []mcpTool {
 				"properties": map[string]any{
 					"url":     str("The URL to open."),
 					"profile": str("Profile name or directory (e.g. 'Work', 'Profile 1')."),
+					"follow":  boolean("Bring the opened tab to the foreground window."),
 					"browser": str("Browser name."),
 				},
 				"required": []string{"url"},
@@ -250,10 +251,14 @@ func mcpTools() []mcpTool {
 				if err != nil {
 					return "", err
 				}
-				data, err := daemon.Call(bName, "open", map[string]any{
+				callArgs := map[string]any{
 					"url":     argString(args, "url"),
 					"profile": argString(args, "profile"),
-				})
+				}
+				if f, ok := args["follow"].(bool); ok && f {
+					callArgs["follow"] = true
+				}
+				data, err := daemon.Call(bName, "open", callArgs)
 				if err != nil {
 					return "", err
 				}
@@ -294,6 +299,7 @@ func mcpTools() []mcpTool {
 				"properties": map[string]any{
 					"tab":     str("Tab ID to navigate."),
 					"url":     str("Target URL."),
+					"follow":  boolean("Bring the navigated tab to the foreground window."),
 					"browser": str("Browser name."),
 				},
 				"required": []string{"tab", "url"},
@@ -303,10 +309,14 @@ func mcpTools() []mcpTool {
 				if err != nil {
 					return "", err
 				}
-				data, err := daemon.Call(bName, "goto", map[string]any{
+				callArgs := map[string]any{
 					"tab": argString(args, "tab"),
 					"url": argString(args, "url"),
-				})
+				}
+				if f, ok := args["follow"].(bool); ok && f {
+					callArgs["follow"] = true
+				}
+				data, err := daemon.Call(bName, "goto", callArgs)
 				if err != nil {
 					return "", err
 				}

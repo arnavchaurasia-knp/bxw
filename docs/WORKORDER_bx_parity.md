@@ -44,7 +44,7 @@ Status legend: ⬜ not started · 🔄 in progress · ✅ done · ❌ blocked (w
 | W13 | `performance` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W14 | `emulate` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W15 | MCP parity (`doctor`,`setup`,`launch`,`list_profiles`) | n/a | n/a | ✅ | ✅ | ✅ | ✅ |
-| W16 | follow mode | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| W16 | follow mode | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W-FINAL | parity verification | n/a | n/a | ⬜ | ⬜ | ⬜ | ⬜ |
 
 **Build order (respect dependencies):** W1 → W2,W3,W4 → W5,W6,W7,W8,W9 → W10,W11 (shared capture) → W12,W13,W14 → W15 → W16 → W-FINAL.
@@ -363,10 +363,10 @@ func (r *ringBuffer) list() []map[string]any { r.mu.Lock(); defer r.mu.Unlock();
 ---
 
 ## W16 — follow mode (bx's `BX_FOLLOW`)
-**Status:** ⬜ not started
+**Status:** ✅ done
 **Checklist**
-- [ ] config read · [ ] front-on-act in open/goto/acts · [ ] `--follow` flag + env · [ ] test · [ ] committed
-- Evidence: _()_
+- [x] config read · [x] front-on-act in open/goto/acts · [x] `--follow` flag + env · [x] test · [x] committed
+- Evidence: _(verified via TestActionsLiveEndToEnd: goto with follow=true succeeded, config.IsFollowEnabled() wired to env and config.toml)_
 
 **Implementation prompt:**
 1. Read a `follow` setting: env `BXW_FOLLOW=1` and/or `config.toml` `follow=true` via `internal/config`.

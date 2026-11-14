@@ -118,9 +118,9 @@ usage:
   bxw launch <browser> [url]          start an isolated agent instance (CDP on)
   bxw login <browser> [url]           open persistent profile headed to log in once
   bxw list tabs [browser]             list open tabs of the bxw-managed instance
-  bxw open <url> [--profile <name>]   open url in named profile window
+  bxw open <url> [--profile <name>] [--follow]   open url in named profile window
   bxw close-tab <tab>                 close one tab
-  bxw goto <tab> <url>                navigate the current tab (vs open = new tab)
+  bxw goto <tab> <url> [--follow]     navigate the current tab (vs open = new tab)
   bxw wait <tab> [--selector s|--text t|--load|--ms N]   wait for a condition
   bxw read <tab> [--ref e12] [--max 20000]   read the page's visible text
   bxw dialog <tab> <accept|dismiss> [--text t] respond to a JavaScript dialog
@@ -977,6 +977,7 @@ func runCDP(args []string) error {
 func runOpen(args []string) error {
 	var pos []string
 	var browserName, profileName string
+	follow := false
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -990,11 +991,15 @@ func runOpen(args []string) error {
 				profileName = args[i+1]
 				i++
 			}
+		case "--follow":
+			follow = true
 		default:
 			if strings.HasPrefix(args[i], "--browser=") {
 				browserName = strings.TrimPrefix(args[i], "--browser=")
 			} else if strings.HasPrefix(args[i], "--profile=") {
 				profileName = strings.TrimPrefix(args[i], "--profile=")
+			} else if args[i] == "--follow=true" {
+				follow = true
 			} else if !strings.HasPrefix(args[i], "-") {
 				pos = append(pos, args[i])
 			}
@@ -1002,7 +1007,7 @@ func runOpen(args []string) error {
 	}
 
 	if len(pos) < 1 {
-		return exit.New(exit.Usage, "usage: bxw open <url> [--profile <name>] [--browser <name>]")
+		return exit.New(exit.Usage, "usage: bxw open <url> [--profile <name>] [--follow] [--browser <name>]")
 	}
 
 	rawURL := pos[0]
@@ -1011,10 +1016,15 @@ func runOpen(args []string) error {
 		return err
 	}
 
-	data, err := daemon.Call(name, "open", map[string]any{
+	callArgs := map[string]any{
 		"url":     rawURL,
 		"profile": profileName,
-	})
+	}
+	if follow {
+		callArgs["follow"] = true
+	}
+
+	data, err := daemon.Call(name, "open", callArgs)
 	if err != nil {
 		return err
 	}
@@ -1074,6 +1084,7 @@ func runCloseTab(args []string) error {
 func runGoto(args []string) error {
 	var pos []string
 	var browserName string
+	follow := false
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -1082,9 +1093,13 @@ func runGoto(args []string) error {
 				browserName = args[i+1]
 				i++
 			}
+		case "--follow":
+			follow = true
 		default:
 			if strings.HasPrefix(args[i], "--browser=") {
 				browserName = strings.TrimPrefix(args[i], "--browser=")
+			} else if args[i] == "--follow=true" {
+				follow = true
 			} else if !strings.HasPrefix(args[i], "-") {
 				pos = append(pos, args[i])
 			}
@@ -1092,7 +1107,7 @@ func runGoto(args []string) error {
 	}
 
 	if len(pos) < 2 {
-		return exit.New(exit.Usage, "usage: bxw goto <tab> <url> [--browser <name>]")
+		return exit.New(exit.Usage, "usage: bxw goto <tab> <url> [--follow] [--browser <name>]")
 	}
 
 	tab := pos[0]
@@ -1103,10 +1118,15 @@ func runGoto(args []string) error {
 		return err
 	}
 
-	data, err := daemon.Call(name, "goto", map[string]any{
+	callArgs := map[string]any{
 		"tab": tab,
 		"url": targetURL,
-	})
+	}
+	if follow {
+		callArgs["follow"] = true
+	}
+
+	data, err := daemon.Call(name, "goto", callArgs)
 	if err != nil {
 		return err
 	}

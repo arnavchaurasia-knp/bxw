@@ -14,6 +14,7 @@ import (
 // Config represents bxw configuration settings.
 type Config struct {
 	DefaultBrowser string `json:"default_browser"`
+	Follow         bool   `json:"follow"`
 	PortMin        int    `json:"port_min"`
 	PortMax        int    `json:"port_max"`
 	CacheMaxMB     int    `json:"cache_max_mb"`
@@ -25,6 +26,7 @@ type Config struct {
 func Default() Config {
 	return Config{
 		DefaultBrowser: "edge",
+		Follow:         false,
 		PortMin:        50000,
 		PortMax:        65000,
 		CacheMaxMB:     500,
@@ -65,6 +67,10 @@ func Load() Config {
 		switch {
 		case currentSection == "" && key == "default_browser":
 			cfg.DefaultBrowser = val
+		case currentSection == "" && key == "follow":
+			if b, err := strconv.ParseBool(val); err == nil {
+				cfg.Follow = b
+			}
 		case currentSection == "" && key == "port_min":
 			if n, err := strconv.Atoi(val); err == nil && n > 0 {
 				cfg.PortMin = n
@@ -104,6 +110,7 @@ func (c Config) Save() error {
 
 	content := fmt.Sprintf(`# bxw configuration
 default_browser = %q
+follow = %t
 port_min = %d
 port_max = %d
 
@@ -113,8 +120,20 @@ cache_days = %d
 
 [retention]
 history_days = %d
-`, c.DefaultBrowser, c.PortMin, c.PortMax, c.CacheMaxMB, c.CacheDays, c.HistoryDays)
+`, c.DefaultBrowser, c.Follow, c.PortMin, c.PortMax, c.CacheMaxMB, c.CacheDays, c.HistoryDays)
 
 	return os.WriteFile(target, []byte(content), 0o644)
+}
+
+// IsFollowEnabled reports whether follow mode is enabled via environment variable
+// (BXW_FOLLOW=1 / BX_FOLLOW=1) or config setting (follow=true).
+func IsFollowEnabled() bool {
+	if v := os.Getenv("BXW_FOLLOW"); v == "1" || strings.EqualFold(v, "true") {
+		return true
+	}
+	if v := os.Getenv("BX_FOLLOW"); v == "1" || strings.EqualFold(v, "true") {
+		return true
+	}
+	return Load().Follow
 }
 

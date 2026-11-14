@@ -22,6 +22,7 @@ import (
 	"github.com/chromedp/cdproto/target"
 
 	"bxw/internal/browser"
+	"bxw/internal/config"
 	"bxw/internal/exit"
 	"bxw/internal/osport"
 )
@@ -172,6 +173,8 @@ func (d *Daemon) dispatch(req Request) Response {
 	case "open":
 		profileRef := ""
 		targetURL := "about:blank"
+		followOverride := false
+		hasFollowOverride := false
 		if req.Args != nil {
 			if pr, ok := req.Args["profile"].(string); ok {
 				profileRef = pr
@@ -179,10 +182,22 @@ func (d *Daemon) dispatch(req Request) Response {
 			if u, ok := req.Args["url"].(string); ok && u != "" {
 				targetURL = u
 			}
+			if f, ok := req.Args["follow"].(bool); ok {
+				followOverride = f
+				hasFollowOverride = true
+			}
 		}
 		tab, err := d.open(profileRef, targetURL, timeout)
 		if err != nil {
 			return errorResponse(err)
+		}
+		if hasFollowOverride && followOverride && !config.IsFollowEnabled() {
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			defer cancel()
+			if bconn, err := d.browserConn(ctx); err == nil {
+				_, _ = cdp.Call(ctx, bconn, target.ActivateTarget, target.ActivateTargetParams{TargetID: target.ID(tab.ID)})
+				_ = bconn.Close()
+			}
 		}
 		data, _ := json.Marshal(tab)
 		return Response{Data: data}
@@ -222,12 +237,25 @@ func (d *Daemon) dispatch(req Request) Response {
 	case "goto":
 		tab, _ := req.Args["tab"].(string)
 		targetURL, _ := req.Args["url"].(string)
+		followOverride := false
+		hasFollowOverride := false
+		if f, ok := req.Args["follow"].(bool); ok {
+			followOverride = f
+			hasFollowOverride = true
+		}
 		if targetURL == "" {
 			return errorResponse(exit.New(exit.Validation, "goto requires url"))
 		}
 		res, err := d.gotoURL(tab, targetURL, timeout)
 		if err != nil {
 			return errorResponse(err)
+		}
+		if hasFollowOverride && followOverride && !config.IsFollowEnabled() {
+			if sess, err := d.tabSession(tab); err == nil {
+				ctx, cancel := context.WithTimeout(context.Background(), timeout)
+				defer cancel()
+				_, _ = cdp.Call(ctx, sess.conn, page.BringToFront, cdp.Empty{})
+			}
 		}
 		data, _ := json.Marshal(res)
 		return Response{Data: data}
