@@ -58,3 +58,19 @@ func TestFilterSubtreeAndFind(t *testing.T) {
 		t.Errorf("expected finding e3, got %+v", found)
 	}
 }
+
+func TestSnapshotPageReplacedFormatting(t *testing.T) {
+	snap := Snapshot{
+		Title:        "New Page",
+		URL:          "https://example.com/new",
+		PageReplaced: true,
+		Nodes: []SnapNode{
+			{Ref: "e1", Role: "heading", Name: "Welcome"},
+		},
+	}
+	text := snap.Text()
+	if !strings.HasPrefix(text, "[page replaced — full snapshot]\n") {
+		t.Errorf("expected page replaced note prefix, got: %s", text)
+	}
+}
+

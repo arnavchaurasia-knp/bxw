@@ -147,3 +147,4 @@ func Clean() (int, int64, error) {
 	}
 	return count, bytes, nil
 }
+

@@ -46,13 +46,19 @@ func Serve(browserName string) int {
 
 	p := osport.Current()
 	sock := p.SocketPath(b.Name)
+	lock := p.LockPath(b.Name)
+	portF := portFile(p, b.Name)
 	_ = os.Remove(sock) // clean up stale socket
 
 	ln, err := net.Listen("unix", sock)
 	if err != nil {
 		return reportStart(exit.New(exit.Upstream, "listen on %s: %v", sock, err))
 	}
-	defer os.Remove(sock)
+	defer func() {
+		_ = os.Remove(sock)
+		_ = os.Remove(lock)
+		_ = os.Remove(portF)
+	}()
 	defer ln.Close()
 
 	d := &Daemon{

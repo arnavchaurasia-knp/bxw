@@ -131,7 +131,8 @@ func (s *Store) Grant(rawURL, capability, scope string, ttl time.Duration) error
 	origin := NormalizeOrigin(rawURL)
 	now := time.Now()
 	var expiresAt time.Time
-	if ttl > 0 {
+	// For "always" scope, permissions never expire. Keep TTL only for session/once.
+	if scope != ScopeAlways && ttl > 0 {
 		expiresAt = now.Add(ttl)
 	}
 
@@ -252,3 +253,4 @@ func (s *Store) saveDurable(rec PermissionRecord) error {
 	}
 	return s.writeDurable(records)
 }
+

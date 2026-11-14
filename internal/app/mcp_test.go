@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"bxw/internal/cache"
 )
 
 func TestMCPServerInitializeAndTools(t *testing.T) {
@@ -75,7 +77,7 @@ func TestMCPServerInitializeAndTools(t *testing.T) {
 		}
 	}
 
-	requiredTools := []string{"list_browsers", "list_tabs", "open", "snapshot", "click", "fill", "type", "key", "eval"}
+	requiredTools := []string{"list_browsers", "list_tabs", "open", "snapshot", "screenshot", "click", "fill", "type", "key", "eval"}
 	for _, req := range requiredTools {
 		if !toolNames[req] {
 			t.Errorf("missing expected MCP tool: %s", req)
@@ -86,5 +88,54 @@ func TestMCPServerInitializeAndTools(t *testing.T) {
 	pingResp, ok := resps[3]
 	if !ok || pingResp.Error != nil {
 		t.Fatalf("invalid ping response: %+v", pingResp)
+	}
+}
+
+func TestMCPServerResourcesRead(t *testing.T) {
+	// Put a test blob into cache
+	testData := []byte("fake-png-binary-content-1234")
+	uri, _, err := cache.Put(testData, ".png")
+	if err != nil {
+		t.Fatalf("cache.Put failed: %v", err)
+	}
+
+	input := strings.Join([]string{
+		`{"jsonrpc":"2.0","id":10,"method":"resources/read","params":{"uri":"` + uri + `"}}`,
+		"",
+	}, "\n")
+
+	in := bytes.NewBufferString(input)
+	var out bytes.Buffer
+
+	err = serveMCP(in, &out)
+	if err != nil {
+		t.Fatalf("serveMCP error: %v", err)
+	}
+
+	var resp rpcMsg
+	if err := json.Unmarshal(out.Bytes(), &resp); err != nil {
+		t.Fatalf("json unmarshal failed: %v\nOutput: %s", err, out.String())
+	}
+	if resp.Error != nil {
+		t.Fatalf("resources/read returned error: %+v", resp.Error)
+	}
+
+	resMap, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map result, got %T", resp.Result)
+	}
+	contents, ok := resMap["contents"].([]any)
+	if !ok || len(contents) == 0 {
+		t.Fatalf("expected non-empty contents array")
+	}
+	first := contents[0].(map[string]any)
+	if first["uri"] != uri {
+		t.Errorf("expected uri %s, got %v", uri, first["uri"])
+	}
+	if first["mimeType"] != "image/png" {
+		t.Errorf("expected image/png mimeType, got %v", first["mimeType"])
+	}
+	if first["blob"] != string(testData) {
+		t.Errorf("blob content mismatch")
 	}
 }

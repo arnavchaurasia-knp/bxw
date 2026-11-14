@@ -328,10 +328,10 @@ func mcpTools() []mcpTool {
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"tab":      str("Tab ID."),
-					"element":  str("Ref from latest snapshot (e.g. 'e12') or CSS selector."),
-					"double":   boolean("Double-click when true."),
-					"browser":  str("Browser name."),
+					"tab":     str("Tab ID."),
+					"element": str("Ref from latest snapshot (e.g. 'e12') or CSS selector."),
+					"double":  boolean("Double-click when true."),
+					"browser": str("Browser name."),
 				},
 				"required": []string{"tab", "element"},
 			},
@@ -362,10 +362,10 @@ func mcpTools() []mcpTool {
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"tab":      str("Tab ID."),
-					"element":  str("Ref (e.g. 'e12') or CSS selector."),
-					"value":    str("Value to insert, select option text/value, or 'true'/'false' for checkboxes."),
-					"browser":  str("Browser name."),
+					"tab":     str("Tab ID."),
+					"element": str("Ref (e.g. 'e12') or CSS selector."),
+					"value":   str("Value to insert, select option text/value, or 'true'/'false' for checkboxes."),
+					"browser": str("Browser name."),
 				},
 				"required": []string{"tab", "element", "value"},
 			},
@@ -483,4 +483,3 @@ func mcpTools() []mcpTool {
 		},
 	}
 }
-

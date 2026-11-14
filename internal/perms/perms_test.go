@@ -40,4 +40,26 @@ func TestPermissionsLifecycle(t *testing.T) {
 	if allowed || state != StatePrompt {
 		t.Errorf("revoked capability should prompt, got %v (%s)", allowed, state)
 	}
+
+	// 5. Always grant never expires
+	if err := s.Grant(testOrigin, CapPurchase, ScopeAlways, 10*time.Minute); err != nil {
+		t.Fatalf("Grant always failed: %v", err)
+	}
+	defer s.Revoke(testOrigin, CapPurchase)
+
+	records := s.List()
+	var found *PermissionRecord
+	for _, r := range records {
+		if r.Origin == testOrigin && r.Capability == CapPurchase {
+			found = &r
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("expected always grant record in list")
+	}
+	if !found.ExpiresAt.IsZero() {
+		t.Errorf("expected zero ExpiresAt for always grant, got %v", found.ExpiresAt)
+	}
 }
+

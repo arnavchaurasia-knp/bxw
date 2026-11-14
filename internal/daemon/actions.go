@@ -163,10 +163,23 @@ func (d *Daemon) snapshot(tabID string, full bool, scopeRef, findQuery string, t
 	hasBaseline := (err == nil && len(base.Nodes) > 0)
 
 	if !full && hasBaseline && scopeRef == "" && findQuery == "" {
-		diff, _ := DiffSnapshots(base.Nodes, nodes)
-		snap.Diff = diff
+		diff, changedCount := DiffSnapshots(base.Nodes, nodes)
 		if diff == "unchanged\n" {
 			snap.Unchanged = true
+			snap.Diff = diff
+		} else {
+			// F5: If the diff degenerates to ~full page replacement (changed >= 70% of baseline,
+			// or diff length >= 85% of full snapshot text), return full snapshot with note and reset baseline
+			fullTextLen := len(Snapshot{URL: url, Title: title, Nodes: nodes}.Text())
+			isWholesale := (float64(changedCount) >= 0.7*float64(len(base.Nodes))) ||
+				(fullTextLen > 0 && float64(len(diff)) >= 0.85*float64(fullTextLen))
+
+			if isWholesale {
+				snap.PageReplaced = true
+				snap.Diff = "" // Clear diff so full snapshot formats with [page replaced — full snapshot]
+			} else {
+				snap.Diff = diff
+			}
 		}
 	}
 

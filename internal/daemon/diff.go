@@ -184,3 +184,4 @@ func FilterFind(nodes []SnapNode, query string) []SnapNode {
 	}
 	return out
 }
+

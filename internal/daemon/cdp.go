@@ -56,7 +56,7 @@ func (d *Daemon) launch(headless bool, targetURL string, realProfile bool) error
 	if err != nil {
 		return err
 	}
-	if err := waitCDP(port, 20*time.Second); err != nil {
+	if err := waitCDP(port, 30*time.Second); err != nil {
 		return err
 	}
 	d.mu.Lock()
@@ -78,7 +78,7 @@ func (d *Daemon) listTabsFiltered(profileRef string) ([]Tab, error) {
 	port := d.cdpPort
 	d.mu.Unlock()
 	if port == 0 {
-		discovered, err := d.discoverPort()
+		discovered, err := d.discoverPortWithRetry(4, 250*time.Millisecond)
 		if err != nil {
 			return nil, err
 		}
@@ -205,12 +205,32 @@ func freePort() (int, error) {
 func waitCDP(port int, d time.Duration) error {
 	deadline := time.Now().Add(d)
 	cli := &http.Client{Timeout: 2 * time.Second}
+	delay := 100 * time.Millisecond
 	for time.Now().Before(deadline) {
 		if r, err := cli.Get(fmt.Sprintf("http://127.0.0.1:%d/json/version", port)); err == nil {
 			r.Body.Close()
 			return nil
 		}
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(delay)
+		if delay < 500*time.Millisecond {
+			delay = delay * 3 / 2
+		}
 	}
 	return fmt.Errorf("CDP did not come up on 127.0.0.1:%d", port)
+}
+
+// discoverPortWithRetry retries discoverPort with backoff
+func (d *Daemon) discoverPortWithRetry(attempts int, initialDelay time.Duration) (int, error) {
+	var lastErr error
+	delay := initialDelay
+	for i := 0; i < attempts; i++ {
+		port, err := d.discoverPort()
+		if err == nil && port > 0 {
+			return port, nil
+		}
+		lastErr = err
+		time.Sleep(delay)
+		delay = delay * 2
+	}
+	return 0, lastErr
 }

@@ -22,12 +22,13 @@ type SnapNode struct {
 
 // Snapshot is the formatted accessibility snapshot of a tab.
 type Snapshot struct {
-	URL       string     `json:"url"`
-	Title     string     `json:"title"`
-	Nodes     []SnapNode `json:"nodes"`
-	Hash      string     `json:"hash,omitempty"`
-	Diff      string     `json:"diff,omitempty"`
-	Unchanged bool       `json:"unchanged,omitempty"`
+	URL          string     `json:"url"`
+	Title        string     `json:"title"`
+	Nodes        []SnapNode `json:"nodes"`
+	Hash         string     `json:"hash,omitempty"`
+	Diff         string     `json:"diff,omitempty"`
+	Unchanged    bool       `json:"unchanged,omitempty"`
+	PageReplaced bool       `json:"page_replaced,omitempty"`
 }
 
 var skipRoles = map[string]bool{
@@ -193,6 +194,9 @@ func (s Snapshot) Text() string {
 		return s.Diff
 	}
 	var b strings.Builder
+	if s.PageReplaced {
+		b.WriteString("[page replaced — full snapshot]\n")
+	}
 	if s.Title != "" {
 		b.WriteString(s.Title)
 		b.WriteByte('\n')

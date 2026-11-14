@@ -306,5 +306,3 @@ func (winPlatform) ProcessRunning(exeName string) bool {
 	}
 	return false
 }
-
-

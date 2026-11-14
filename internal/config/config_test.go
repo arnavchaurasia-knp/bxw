@@ -34,3 +34,4 @@ history_days = 60
 		t.Errorf("expected default edge, got %s", cfg.DefaultBrowser)
 	}
 }
+

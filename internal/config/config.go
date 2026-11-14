@@ -117,3 +117,4 @@ history_days = %d
 
 	return os.WriteFile(target, []byte(content), 0o644)
 }
+

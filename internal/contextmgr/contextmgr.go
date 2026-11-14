@@ -139,3 +139,4 @@ func (sc SessionContext) Summary() string {
 	}
 	return strings.TrimSpace(sb.String())
 }
+

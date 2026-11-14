@@ -42,6 +42,8 @@ func Run(args []string) error {
 		return runLogin(args[1:])
 	case "snapshot":
 		return runSnapshot(args[1:])
+	case "screenshot":
+		return runScreenshot(args[1:])
 	case "click":
 		return runClick(args[1:])
 	case "fill":
@@ -93,6 +95,8 @@ usage:
   bxw mcp [install [client]]          speak MCP over stdio or install into AI clients
   bxw snapshot <tab> [flags]          accessibility snapshot with stable element refs (e1, e2...)
                                       flags: --full, --ref <ref>, --find <text>, --out <file>
+  bxw screenshot <tab> [flags]        capture viewport PNG, saving to cache (prints bxw://cache link)
+                                      flags: --out <file>
   bxw click <tab> <ref|sel> [--double] click an element by ref or CSS selector
   bxw fill <tab> <ref|sel> <val>...   fill form inputs, selects, or toggles
   bxw type <tab> <text> [--submit <k>] type text into active element
@@ -378,6 +382,65 @@ func runSnapshot(args []string) error {
 	}
 
 	fmt.Print(text)
+	return nil
+}
+
+func runScreenshot(args []string) error {
+	var pos []string
+	var browserName, outFile string
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--browser":
+			if i+1 < len(args) {
+				browserName = args[i+1]
+				i++
+			}
+		case "--out":
+			if i+1 < len(args) {
+				outFile = args[i+1]
+				i++
+			}
+		default:
+			if strings.HasPrefix(args[i], "--browser=") {
+				browserName = strings.TrimPrefix(args[i], "--browser=")
+			} else if strings.HasPrefix(args[i], "--out=") {
+				outFile = strings.TrimPrefix(args[i], "--out=")
+			} else if !strings.HasPrefix(args[i], "-") {
+				pos = append(pos, args[i])
+			}
+		}
+	}
+
+	tab := ""
+	if len(pos) >= 1 {
+		tab = pos[0]
+	}
+
+	name, err := resolveBrowser(browserName)
+	if err != nil {
+		return err
+	}
+
+	data, err := daemon.Call(name, "screenshot", map[string]any{"tab": tab})
+	if err != nil {
+		return err
+	}
+
+	uri, _, err := cache.Put(data, ".png")
+	if err != nil {
+		return exit.New(exit.Internal, "cache screenshot: %v", err)
+	}
+
+	if outFile != "" {
+		if err := os.WriteFile(outFile, data, 0o644); err != nil {
+			return exit.New(exit.User, "write %s: %v", outFile, err)
+		}
+		fmt.Printf("wrote %s (%s)\n", outFile, uri)
+		return nil
+	}
+
+	fmt.Println(uri)
 	return nil
 }
 
@@ -873,8 +936,44 @@ func runClean(args []string) error {
 	}
 	fmt.Printf("cleaned cache: removed %d blobs (%.2f MB)\n", count, float64(bytes)/(1024*1024))
 
+	p := osport.Current()
+	dataRoot := p.DataRoot()
+
+	// Clean stale top-level legacy files/directories in DataRoot
+	if entries, err := os.ReadDir(dataRoot); err == nil {
+		for _, e := range entries {
+			name := e.Name()
+			fullPath := filepath.Join(dataRoot, name)
+			// Remove orphaned agent dirs (brave-agent, edge-agent, test-agent-*, etc.)
+			if e.IsDir() {
+				if strings.HasSuffix(name, "-agent") || strings.HasPrefix(name, "test-") {
+					_ = os.RemoveAll(fullPath)
+				}
+			} else {
+				// Remove legacy top-level .lock, .sock, .log, .port files
+				if strings.HasSuffix(name, ".lock") || strings.HasSuffix(name, ".sock") ||
+					strings.HasSuffix(name, ".log") || strings.HasSuffix(name, ".port") {
+					_ = os.Remove(fullPath)
+				}
+			}
+		}
+	}
+
+	// Clean stale files in run/ whose owning daemon is not running
+	runDir := p.RunDir()
+	if entries, err := os.ReadDir(runDir); err == nil {
+		for _, e := range entries {
+			name := e.Name()
+			fullPath := filepath.Join(runDir, name)
+			// e.g. edge.sock, edge.lock, edge.port
+			browserName := strings.Split(name, ".")[0]
+			if !daemon.Running(browserName) {
+				_ = os.Remove(fullPath)
+			}
+		}
+	}
+
 	if all {
-		p := osport.Current()
 		// Clean logs
 		logsDir := p.LogsDir()
 		if entries, err := os.ReadDir(logsDir); err == nil {

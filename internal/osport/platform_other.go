@@ -76,9 +76,15 @@ func (stubPlatform) PermissionsFile() string {
 func (stubPlatform) Dir() string {
 	return stubPlatform{}.RunDir()
 }
-func (stubPlatform) SocketPath(browser string) string { return filepath.Join(stubPlatform{}.RunDir(), browser+".sock") }
-func (stubPlatform) LockPath(browser string) string   { return filepath.Join(stubPlatform{}.RunDir(), browser+".lock") }
-func (stubPlatform) LogPath(browser string) string    { return filepath.Join(stubPlatform{}.LogsDir(), browser+".log") }
+func (stubPlatform) SocketPath(browser string) string {
+	return filepath.Join(stubPlatform{}.RunDir(), browser+".sock")
+}
+func (stubPlatform) LockPath(browser string) string {
+	return filepath.Join(stubPlatform{}.RunDir(), browser+".lock")
+}
+func (stubPlatform) LogPath(browser string) string {
+	return filepath.Join(stubPlatform{}.LogsDir(), browser+".log")
+}
 
 func (stubPlatform) Lock(path string) (func(), error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -143,5 +149,3 @@ func (stubPlatform) SpawnDetached(name string, args []string) (int, error) {
 }
 
 func (stubPlatform) ProcessRunning(exeName string) bool { return false }
-
-
