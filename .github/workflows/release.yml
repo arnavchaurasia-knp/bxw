@@ -49,11 +49,11 @@ jobs:
           $env:GOOS = "windows"
           $env:GOARCH = "amd64"
           $env:CGO_ENABLED = "0"
-          go build -ldflags "-s -w -X main.version=$env:VERSION" -o dist/bxw-windows-amd64.exe .
-          
+          go build -trimpath -ldflags "-s -w -X bxw/internal/app.Version=$env:VERSION" -o dist/bxw-windows-amd64.exe .
+
           # arm64
           $env:GOARCH = "arm64"
-          go build -ldflags "-s -w -X main.version=$env:VERSION" -o dist/bxw-windows-arm64.exe .
+          go build -trimpath -ldflags "-s -w -X bxw/internal/app.Version=$env:VERSION" -o dist/bxw-windows-arm64.exe .
 
       - name: Package Archives
         shell: pwsh
