@@ -29,7 +29,7 @@ Status legend: ⬜ not started · 🔄 in progress · ✅ done · ❌ blocked (w
 
 | # | Task | Kind | Acceptance proven | Committed | Status |
 |---|---|---|---|---|---|
-| L1 | CI is green on the real repo | verify | ⬜ | n/a | ⬜ |
+| L1 | CI is green on the real repo | verify | ✅ | yes | ✅ |
 | L2 | Release pipeline produces working binaries | verify | ⬜ | n/a | ⬜ |
 | L3 | `npx bxw mcp` works from a clean machine | verify | ⬜ | n/a | ⬜ |
 | L4 | Fix: `fill` on `date`/`time`/`color` inputs | bug | ⬜ | ⬜ | ⬜ |
@@ -74,15 +74,15 @@ other) · L8–L12 (docs/community, independent) · L13 (needs L1–L12 green) �
 # ════════ TASKS ════════
 
 ## L1 — CI is green on the real repo
-**Status:** ⬜
+**Status:** ✅
 **Why:** the inherited `.github/workflows/ci.yml` (windows-latest + ubuntu-latest matrix) has never
 run against a real remote. Prove it before anything else — a red default branch kills first impressions.
 
 **Checklist**
-- [ ] After the first push, open the Actions tab; confirm the `ci` workflow triggered on `main`.
-- [ ] windows-latest job: `go vet`, `go test ./...`, `go build ./...` all green.
-- [ ] ubuntu-latest job: cross-compile stub (`!windows`) builds green.
-- [ ] If the integration smoke step (launch edge --headless) flakes on the runner, mark it
+- [x] After the first push, open the Actions tab; confirm the `ci` workflow triggered on `main`.
+- [x] windows-latest job: `go vet`, `go test ./...`, `go build ./...` all green.
+- [x] ubuntu-latest job: cross-compile stub (`!windows`) builds green.
+- [x] If the integration smoke step (launch edge --headless) flakes on the runner, mark it
       `continue-on-error: true` with a `# TODO: flaky on CI runner` comment — do NOT delete the step.
 
 **Implementation prompt (do exactly this):**
@@ -91,7 +91,7 @@ read the log (`gh run view <id> --log-failed`), fix the root cause in the workfl
 `ci(oss): L1 fix <what>`, push, re-watch. Do not mark ✅ until a run is fully green.
 
 **Acceptance:** `gh run list --workflow=ci.yml --limit 1` shows `completed  success  main`.
-**Evidence:** _paste the `gh run list` line_
+**Evidence:** `completed	success	ci(oss): L1 fix resolveProfile fallback when Local State absent on fr…	CI	main	push	43622133198	1m26s	2026-11-14T17:37:38Z`
 
 ---
 
