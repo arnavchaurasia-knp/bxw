@@ -588,4 +588,16 @@ func runLiveActionsOnBrowser(t *testing.T, targetBrowser browser.Browser) {
 		t.Fatalf("dispatch goto with follow error: %s", gotoFollowResp.Error)
 	}
 	t.Logf("follow verified: goto with follow=true succeeded")
+
+	// Test L6: close_tab on last tab refuses
+	lastCloseResp := d.dispatch(Request{
+		Op: "close_tab",
+		Args: map[string]any{
+			"tab": tabID,
+		},
+	})
+	if lastCloseResp.Error == "" || !strings.Contains(lastCloseResp.Error, "refusing to close the last tab") {
+		t.Fatalf("expected last-tab refusal error, got: %s (data: %s)", lastCloseResp.Error, string(lastCloseResp.Data))
+	}
+	t.Logf("last-tab refusal verified: %s", lastCloseResp.Error)
 }

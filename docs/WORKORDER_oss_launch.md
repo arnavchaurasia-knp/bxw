@@ -34,7 +34,7 @@ Status legend: ⬜ not started · 🔄 in progress · ✅ done · ❌ blocked (w
 | L3 | `npx bxw mcp` works from a clean machine | verify | ✅ | yes | ✅ |
 | L4 | Fix: `fill` on `date`/`time`/`color` inputs | bug | ✅ | yes | ✅ |
 | L5 | Fix: `open` profile-probe timeout on fresh profile | bug | ✅ | yes | ✅ |
-| L6 | Fix: `close_tab` on last tab — clear UX | bug | ⬜ | ⬜ | ⬜ |
+| L6 | Fix: `close_tab` on last tab — clear UX | bug | ✅ | yes | ✅ |
 | L7 | Test: F5 wholesale-diff threshold | test | ⬜ | ⬜ | ⬜ |
 | L8 | CODE_OF_CONDUCT.md | community | ⬜ | ⬜ | ⬜ |
 | L9 | Issue + PR templates | community | ⬜ | ⬜ | ⬜ |
@@ -228,23 +228,33 @@ opened 83EE148F in Aditya Kumar (Default):  (https://example.com)
 ---
 
 ## L6 — Fix: `close_tab` on last tab — clear UX
-**Status:** ⬜
+**Status:** ✅
 **Why:** closing the only tab lets Chrome exit (standard behaviour), after which CDP is unreachable and
 later commands fail with a confusing error. Not a bug in Chrome — but the message should explain it.
 
 **Checklist**
-- [ ] Detect when the tab being closed is the last `page` target.
-- [ ] Either refuse with a clear message (`refusing to close the last tab — the browser would exit;
+- [x] Detect when the tab being closed is the last `page` target.
+- [x] Either refuse with a clear message (`refusing to close the last tab — the browser would exit;
       run bxw stop <browser> to shut down, or open another tab first`) OR close it and return a terse
       note that the browser exited. Pick refuse-by-default; make it explicit.
-- [ ] 2-tab case must still pass (close one, other survives, browser alive).
+- [x] 2-tab case must still pass (close one, other survives, browser alive).
 
 **Implementation prompt:** in the `close_tab` daemon op, count `page` targets first. If count==1,
 return an `exit.User` error with the guidance above. Keep multi-tab behaviour unchanged. Add a test
 for the last-tab refusal and the 2-tab success.
 
 **Acceptance:** closing the last tab returns the clear guidance (exit non-zero); 2-tab close still works.
-**Evidence:** _paste both outcomes_
+**Evidence:**
+```
+$ bxw close_tab 28F8A9E0 --browser edge
+bxw: refusing to close the last tab — the browser would exit; run bxw stop edge to shut down, or open another tab first
+
+$ bxw open "https://example.com" --browser edge
+opened 64C63041 in Profile 1 (Default):  (https://example.com)
+
+$ bxw close_tab 64C63041 --browser edge
+closed tab 64C63041
+```
 
 ---
 

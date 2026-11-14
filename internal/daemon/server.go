@@ -221,6 +221,11 @@ func (d *Daemon) dispatch(req Request) Response {
 		}
 		defer bconn.Close()
 
+		// Refuse to close the last tab to avoid abrupt browser exit and lost CDP session
+		if tabs, err := d.listTabs(); err == nil && len(tabs) <= 1 {
+			return errorResponse(exit.New(exit.User, "refusing to close the last tab — the browser would exit; run bxw stop %s to shut down, or open another tab first", d.br.Name))
+		}
+
 		if _, err := cdp.Call(ctx, bconn, target.CloseTarget, target.CloseTargetParams{TargetID: target.ID(t.ID)}); err != nil {
 			return errorResponse(exit.New(exit.Upstream, "close target: %v", err))
 		}
