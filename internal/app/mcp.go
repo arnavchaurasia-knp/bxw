@@ -514,6 +514,41 @@ func mcpTools() []mcpTool {
 			},
 		},
 		{
+			Name:        "drag",
+			Description: "Drag an element from source to destination by ref (e.g. 'e12') or CSS selector.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"tab":     str("Tab ID."),
+					"from":    str("Source element ref or CSS selector."),
+					"to":      str("Destination element ref or CSS selector."),
+					"browser": str("Browser name."),
+				},
+				"required": []string{"tab", "from", "to"},
+			},
+			run: func(args map[string]any) (string, error) {
+				bName, err := resolveBrowser(argString(args, "browser"))
+				if err != nil {
+					return "", err
+				}
+				from := argString(args, "from")
+				to := argString(args, "to")
+				data, err := daemon.Call(bName, "drag", map[string]any{
+					"tab":  argString(args, "tab"),
+					"from": from,
+					"to":   to,
+				})
+				if err != nil {
+					return "", err
+				}
+				var res daemon.ActResult
+				if err := json.Unmarshal(data, &res); err == nil {
+					return res.TerseSummary(fmt.Sprintf("drag %s -> %s", from, to)), nil
+				}
+				return string(data), nil
+			},
+		},
+		{
 			Name:        "fill",
 			Description: "Fill form elements (inputs, textareas, selects, checkboxes) by ref or selector.",
 			InputSchema: map[string]any{

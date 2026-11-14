@@ -309,6 +309,17 @@ func (d *Daemon) dispatch(req Request) Response {
 		data, _ := json.Marshal(res)
 		return Response{Data: data}
 
+	case "drag":
+		tab, _ := req.Args["tab"].(string)
+		from, _ := req.Args["from"].(string)
+		to, _ := req.Args["to"].(string)
+		res, err := d.drag(tab, from, to, timeout)
+		if err != nil {
+			return errorResponse(err)
+		}
+		data, _ := json.Marshal(res)
+		return Response{Data: data}
+
 	case "fill":
 		tab, _ := req.Args["tab"].(string)
 		var pairs [][2]string

@@ -34,7 +34,7 @@ Status legend: ⬜ not started · 🔄 in progress · ✅ done · ❌ blocked (w
 | W3 | `wait` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W4 | `read` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W5 | `hover` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| W6 | `drag` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| W6 | `drag` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W7 | `upload` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | W8 | `dialog` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | W9 | `close_tab` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -188,10 +188,10 @@ Import `github.com/chromedp/cdproto/page`, `github.com/chromedp/cdproto/cdp`, `c
 ---
 
 ## W6 — `drag`
-**Status:** ⬜ not started
+**Status:** ✅ done
 **Checklist**
-- [ ] daemon op · [ ] CLI · [ ] MCP · [ ] usage · [ ] test · [ ] committed
-- Evidence: _()_
+- [x] daemon op · [x] CLI · [x] MCP · [x] usage · [x] test · [x] committed
+- Evidence: _(verified via TestActionsLiveEndToEnd: drag from #username to #submit with intermediate dragover dispatch)_
 
 **Implementation prompt:**
 1. `actions.go`: `func (d *Daemon) drag(tabID, from, to string, timeout) (ActResult, error)` via `d.actOn`. Inside: `fx,fy := center(from)`, `tx,ty := center(to)`, then dispatch `MouseMoved(fx,fy)` → `MousePressed(fx,fy,left,buttons=1)` → `MouseMoved((fx+tx)/2,(fy+ty)/2)` → `MouseMoved(tx,ty)` → `MouseReleased(tx,ty,left,buttons=0)` (the two intermediate moves trigger dragover/HTML5 DnD).

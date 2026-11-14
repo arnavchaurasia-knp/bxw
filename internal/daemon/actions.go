@@ -238,6 +238,74 @@ func (d *Daemon) hover(tabID, el string, timeout time.Duration) (ActResult, erro
 	})
 }
 
+func (d *Daemon) drag(tabID, from, to string, timeout time.Duration) (ActResult, error) {
+	return d.actOn(tabID, timeout, func(ctx context.Context, sess *tabSession) error {
+		fx, fy, err := center(ctx, sess, from, timeout)
+		if err != nil {
+			return err
+		}
+		tx, ty, err := center(ctx, sess, to, timeout)
+		if err != nil {
+			return err
+		}
+
+		// 1. Move to source
+		if _, err := cdp.Call(ctx, sess.conn, input.DispatchMouseEvent, input.DispatchMouseEventParams{
+			Type: input.DispatchMouseEventTypeMouseMoved,
+			X:    fx,
+			Y:    fy,
+		}); err != nil {
+			return err
+		}
+
+		// 2. Mouse press
+		if _, err := cdp.Call(ctx, sess.conn, input.DispatchMouseEvent, input.DispatchMouseEventParams{
+			Type:       input.DispatchMouseEventTypeMousePressed,
+			Button:     input.MouseButtonLeft,
+			Buttons:    1,
+			ClickCount: 1,
+			X:          fx,
+			Y:          fy,
+		}); err != nil {
+			return err
+		}
+
+		// 3. Move halfway (triggers dragover/HTML5 DnD)
+		if _, err := cdp.Call(ctx, sess.conn, input.DispatchMouseEvent, input.DispatchMouseEventParams{
+			Type:    input.DispatchMouseEventTypeMouseMoved,
+			Buttons: 1,
+			X:       (fx + tx) / 2,
+			Y:       (fy + ty) / 2,
+		}); err != nil {
+			return err
+		}
+
+		// 4. Move to destination
+		if _, err := cdp.Call(ctx, sess.conn, input.DispatchMouseEvent, input.DispatchMouseEventParams{
+			Type:    input.DispatchMouseEventTypeMouseMoved,
+			Buttons: 1,
+			X:       tx,
+			Y:       ty,
+		}); err != nil {
+			return err
+		}
+
+		// 5. Release mouse
+		if _, err := cdp.Call(ctx, sess.conn, input.DispatchMouseEvent, input.DispatchMouseEventParams{
+			Type:       input.DispatchMouseEventTypeMouseReleased,
+			Button:     input.MouseButtonLeft,
+			Buttons:    0,
+			ClickCount: 1,
+			X:          tx,
+			Y:          ty,
+		}); err != nil {
+			return err
+		}
+
+		return nil
+	})
+}
+
 func (d *Daemon) click(tabID, el string, double bool, timeout time.Duration) (ActResult, error) {
 	return d.actOn(tabID, timeout, func(ctx context.Context, sess *tabSession) error {
 		x, y, err := moveMouse(ctx, sess, el, timeout)

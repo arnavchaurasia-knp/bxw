@@ -233,4 +233,22 @@ func TestActionsLiveEndToEnd(t *testing.T) {
 		t.Fatalf("unmarshal hover result %s: %v", string(hoverResp.Data), err)
 	}
 	t.Logf("hover verified: %s", hoverRes.TerseSummary("hover #submit"))
+
+	// Test W6 drag dispatch
+	dragResp := d.dispatch(Request{
+		Op: "drag",
+		Args: map[string]any{
+			"tab":  tabID,
+			"from": "#username",
+			"to":   "#submit",
+		},
+	})
+	if dragResp.Error != "" {
+		t.Fatalf("dispatch drag error: %s", dragResp.Error)
+	}
+	var dragRes ActResult
+	if err := json.Unmarshal(dragResp.Data, &dragRes); err != nil {
+		t.Fatalf("unmarshal drag result %s: %v", string(dragResp.Data), err)
+	}
+	t.Logf("drag verified: %s", dragRes.TerseSummary("drag #username -> #submit"))
 }
