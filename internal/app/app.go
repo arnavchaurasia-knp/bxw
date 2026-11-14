@@ -70,6 +70,8 @@ func Run(args []string) error {
 		return runWait(args[1:])
 	case "read":
 		return runRead(args[1:])
+	case "dialog":
+		return runDialog(args[1:])
 	case "perms":
 		return runPerms(args[1:])
 	case "history":
@@ -108,6 +110,7 @@ usage:
   bxw goto <tab> <url>                navigate the current tab (vs open = new tab)
   bxw wait <tab> [--selector s|--text t|--load|--ms N]   wait for a condition
   bxw read <tab> [--ref e12] [--max 20000]   read the page's visible text
+  bxw dialog <tab> <accept|dismiss> [--text t] respond to a JavaScript dialog
   bxw setup <browser> [--revert]      enable/disable remote debugging on real profile
   bxw mcp [install [client]]          speak MCP over stdio or install into AI clients
   bxw snapshot <tab> [flags]          accessibility snapshot with stable element refs (e1, e2...)
@@ -1246,6 +1249,67 @@ func runRead(args []string) error {
 	}
 
 	fmt.Println(string(data))
+	return nil
+}
+
+func runDialog(args []string) error {
+	var pos []string
+	var browserName string
+	var promptText string
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--browser":
+			if i+1 < len(args) {
+				browserName = args[i+1]
+				i++
+			}
+		case "--text":
+			if i+1 < len(args) {
+				promptText = args[i+1]
+				i++
+			}
+		default:
+			if strings.HasPrefix(args[i], "--browser=") {
+				browserName = strings.TrimPrefix(args[i], "--browser=")
+			} else if strings.HasPrefix(args[i], "--text=") {
+				promptText = strings.TrimPrefix(args[i], "--text=")
+			} else if !strings.HasPrefix(args[i], "-") {
+				pos = append(pos, args[i])
+			}
+		}
+	}
+
+	if len(pos) < 2 {
+		return exit.New(exit.Usage, "usage: bxw dialog <tab> <accept|dismiss> [--text <prompt>] [--browser <name>]")
+	}
+
+	tab := pos[0]
+	action := pos[1]
+	if action != "accept" && action != "dismiss" {
+		return exit.New(exit.Validation, "dialog action must be 'accept' or 'dismiss'")
+	}
+
+	name, err := resolveBrowser(browserName)
+	if err != nil {
+		return err
+	}
+
+	dialogArgs := map[string]any{
+		"tab":    tab,
+		"action": action,
+	}
+	if promptText != "" {
+		dialogArgs["prompt_text"] = promptText
+	}
+
+	data, err := daemon.Call(name, "dialog", dialogArgs)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("dialog %s -> handled\n", action)
+	_ = data
 	return nil
 }
 

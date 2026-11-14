@@ -595,6 +595,39 @@ func mcpTools() []mcpTool {
 			},
 		},
 		{
+			Name:        "dialog",
+			Description: "Accept or dismiss a JavaScript dialog (alert, confirm, prompt, beforeunload).",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"tab":         str("Tab ID."),
+					"action":      str("Dialog action: 'accept' or 'dismiss'."),
+					"prompt_text": str("Optional prompt text when accepting a prompt() dialog."),
+					"browser":     str("Browser name."),
+				},
+				"required": []string{"tab", "action"},
+			},
+			run: func(args map[string]any) (string, error) {
+				bName, err := resolveBrowser(argString(args, "browser"))
+				if err != nil {
+					return "", err
+				}
+				action := argString(args, "action")
+				dialogArgs := map[string]any{
+					"tab":    argString(args, "tab"),
+					"action": action,
+				}
+				if t := argString(args, "prompt_text"); t != "" {
+					dialogArgs["prompt_text"] = t
+				}
+				_, err = daemon.Call(bName, "dialog", dialogArgs)
+				if err != nil {
+					return "", err
+				}
+				return fmt.Sprintf("dialog %s -> handled", action), nil
+			},
+		},
+		{
 			Name:        "fill",
 			Description: "Fill form elements (inputs, textareas, selects, checkboxes) by ref or selector.",
 			InputSchema: map[string]any{

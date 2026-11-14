@@ -400,6 +400,38 @@ func (d *Daemon) dispatch(req Request) Response {
 		}
 		return Response{Data: pngBytes}
 
+	case "dialog":
+		tab, _ := req.Args["tab"].(string)
+		action, _ := req.Args["action"].(string)
+		promptText, _ := req.Args["prompt_text"].(string)
+		if action != "accept" && action != "dismiss" {
+			return errorResponse(exit.New(exit.Validation, "dialog action must be 'accept' or 'dismiss'"))
+		}
+		sess, err := d.tabSession(tab)
+		if err != nil {
+			return errorResponse(err)
+		}
+		sess.mu.Lock()
+		defer sess.mu.Unlock()
+
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+
+		accept := action == "accept"
+		if _, err := cdp.Call(ctx, sess.conn, page.HandleJavaScriptDialog, page.HandleJavaScriptDialogParams{
+			Accept:     accept,
+			PromptText: promptText,
+		}); err != nil {
+			return errorResponse(exit.New(exit.Upstream, "handle dialog: %v", err))
+		}
+
+		sess.dmu.Lock()
+		sess.dialog = nil
+		sess.dmu.Unlock()
+
+		data, _ := json.Marshal(map[string]any{"action": action, "handled": true})
+		return Response{Data: data}
+
 	case "cdp":
 		tab, _ := req.Args["tab"].(string)
 		method, _ := req.Args["method"].(string)

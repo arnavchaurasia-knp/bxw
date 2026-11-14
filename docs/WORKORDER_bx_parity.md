@@ -36,7 +36,7 @@ Status legend: ⬜ not started · 🔄 in progress · ✅ done · ❌ blocked (w
 | W5 | `hover` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W6 | `drag` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W7 | `upload` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| W8 | `dialog` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| W8 | `dialog` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W9 | `close_tab` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | W10 | `console` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | W11 | `network` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -219,10 +219,10 @@ Import `github.com/chromedp/cdproto/page`, `github.com/chromedp/cdproto/cdp`, `c
 ---
 
 ## W8 — `dialog` (accept/dismiss JS dialogs)
-**Status:** ⬜ not started — **detection already exists**, only the verb is missing.
+**Status:** ✅ done
 **Checklist**
-- [ ] daemon op · [ ] CLI · [ ] MCP · [ ] usage · [ ] test · [ ] committed
-- Evidence: _()_
+- [x] daemon op · [x] CLI · [x] MCP · [x] usage · [x] test · [x] committed
+- Evidence: _(verified via TestActionsLiveEndToEnd: confirm() accepted, confirmVal == true)_
 
 **Implementation prompt:**
 1. Detection is already in `session.go` (`watchDialogs`, `pendingDialog`, `dialog` field). `errIfDialog` already tells users to run `bxw dialog <tab> accept|dismiss` — so keep that message, just make the verb real.

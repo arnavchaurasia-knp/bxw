@@ -300,4 +300,42 @@ func TestActionsLiveEndToEnd(t *testing.T) {
 	if fileName != filepath.Base(tmpUploadPath) {
 		t.Fatalf("expected uploaded file name %q, got %q", filepath.Base(tmpUploadPath), fileName)
 	}
+
+	// Test W8 dialog dispatch
+	// Trigger confirm() asynchronously via setTimeout
+	_ = d.dispatch(Request{
+		Op: "eval",
+		Args: map[string]any{
+			"tab":    tabID,
+			"script": `setTimeout(() => { window._confirmResult = confirm('Proceed?'); }, 50)`,
+		},
+	})
+	time.Sleep(200 * time.Millisecond)
+
+	// Dispatch dialog accept
+	dialogResp := d.dispatch(Request{
+		Op: "dialog",
+		Args: map[string]any{
+			"tab":    tabID,
+			"action": "accept",
+		},
+	})
+	if dialogResp.Error != "" {
+		t.Fatalf("dispatch dialog error: %s", dialogResp.Error)
+	}
+	t.Logf("dialog accept verified: %s", string(dialogResp.Data))
+
+	// Verify confirm returned true
+	var confirmVal bool
+	confirmEval := d.dispatch(Request{
+		Op: "eval",
+		Args: map[string]any{
+			"tab":    tabID,
+			"script": "window._confirmResult",
+		},
+	})
+	_ = json.Unmarshal(confirmEval.Data, &confirmVal)
+	if !confirmVal {
+		t.Fatalf("expected confirm result true, got %v", confirmVal)
+	}
 }
