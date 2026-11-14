@@ -16,6 +16,7 @@ import (
 	"github.com/chromedp/cdproto/dom"
 	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/cdproto/page"
+	"github.com/chromedp/cdproto/target"
 
 	"bxw/internal/browser"
 	"bxw/internal/exit"
@@ -181,6 +182,38 @@ func (d *Daemon) dispatch(req Request) Response {
 			return errorResponse(err)
 		}
 		data, _ := json.Marshal(tab)
+		return Response{Data: data}
+
+	case "close_tab":
+		tab, _ := req.Args["tab"].(string)
+		if tab == "" {
+			return errorResponse(exit.New(exit.Validation, "close_tab requires tab id"))
+		}
+		t, err := d.findTab(tab)
+		if err != nil {
+			return errorResponse(err)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+
+		bconn, err := d.browserConn(ctx)
+		if err != nil {
+			return errorResponse(err)
+		}
+		defer bconn.Close()
+
+		if _, err := cdp.Call(ctx, bconn, target.CloseTarget, target.CloseTargetParams{TargetID: target.ID(t.ID)}); err != nil {
+			return errorResponse(exit.New(exit.Upstream, "close target: %v", err))
+		}
+
+		d.mu.Lock()
+		delete(d.sessions, t.ID)
+		d.mu.Unlock()
+
+		_ = DeleteTabState(d.br.Name, t.ID)
+
+		data, _ := json.Marshal(map[string]any{"closed": t.ID, "success": true})
 		return Response{Data: data}
 
 	case "goto":

@@ -64,6 +64,8 @@ func Run(args []string) error {
 		return runCDP(args[1:])
 	case "open":
 		return runOpen(args[1:])
+	case "close-tab", "close_tab":
+		return runCloseTab(args[1:])
 	case "goto":
 		return runGoto(args[1:])
 	case "wait":
@@ -107,6 +109,7 @@ usage:
   bxw login <browser> [url]           open persistent profile headed to log in once
   bxw list tabs [browser]             list open tabs of the bxw-managed instance
   bxw open <url> [--profile <name>]   open url in named profile window
+  bxw close-tab <tab>                 close one tab
   bxw goto <tab> <url>                navigate the current tab (vs open = new tab)
   bxw wait <tab> [--selector s|--text t|--load|--ms N]   wait for a condition
   bxw read <tab> [--ref e12] [--max 20000]   read the page's visible text
@@ -1008,6 +1011,47 @@ func runOpen(args []string) error {
 		profStr = fmt.Sprintf(" in %s (%s)", tab.Profile, tab.ProfileDir)
 	}
 	fmt.Printf("opened %s%s: %s (%s)\n", short(tab.ID), profStr, tab.Title, tab.URL)
+	return nil
+}
+
+func runCloseTab(args []string) error {
+	var pos []string
+	var browserName string
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--browser":
+			if i+1 < len(args) {
+				browserName = args[i+1]
+				i++
+			}
+		default:
+			if strings.HasPrefix(args[i], "--browser=") {
+				browserName = strings.TrimPrefix(args[i], "--browser=")
+			} else if !strings.HasPrefix(args[i], "-") {
+				pos = append(pos, args[i])
+			}
+		}
+	}
+
+	if len(pos) < 1 {
+		return exit.New(exit.Usage, "usage: bxw close-tab <tab> [--browser <name>]")
+	}
+
+	tab := pos[0]
+	name, err := resolveBrowser(browserName)
+	if err != nil {
+		return err
+	}
+
+	_, err = daemon.Call(name, "close_tab", map[string]any{
+		"tab": tab,
+	})
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("closed tab %s\n", short(tab))
 	return nil
 }
 

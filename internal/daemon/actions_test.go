@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chromedp/cdproto/cdp"
+
 	"bxw/internal/browser"
 )
 
@@ -38,10 +40,11 @@ func TestActionsLiveEndToEnd(t *testing.T) {
 	defer ts.Close()
 
 	d := &Daemon{
-		br:       targetBrowser,
-		stop:     make(chan struct{}),
-		since:    time.Now(),
-		sessions: make(map[string]*tabSession),
+		br:        targetBrowser,
+		stop:      make(chan struct{}),
+		since:     time.Now(),
+		sessions:  make(map[string]*tabSession),
+		profileOf: make(map[cdp.BrowserContextID]string),
 	}
 
 	// 1. Launch headless agent browser pointed at test server
@@ -338,4 +341,32 @@ func TestActionsLiveEndToEnd(t *testing.T) {
 	if !confirmVal {
 		t.Fatalf("expected confirm result true, got %v", confirmVal)
 	}
+
+	// Test W9 close_tab dispatch
+	// Open a second tab first
+	openResp := d.dispatch(Request{
+		Op: "open",
+		Args: map[string]any{
+			"url": ts.URL + "/second",
+		},
+	})
+	if openResp.Error != "" {
+		t.Fatalf("dispatch open second tab error: %s", openResp.Error)
+	}
+	var secondTab Tab
+	if err := json.Unmarshal(openResp.Data, &secondTab); err != nil {
+		t.Fatalf("unmarshal second tab: %v", err)
+	}
+
+	// Close the second tab
+	closeResp := d.dispatch(Request{
+		Op: "close_tab",
+		Args: map[string]any{
+			"tab": secondTab.ID,
+		},
+	})
+	if closeResp.Error != "" {
+		t.Fatalf("dispatch close_tab error: %s", closeResp.Error)
+	}
+	t.Logf("close_tab verified: %s", string(closeResp.Data))
 }

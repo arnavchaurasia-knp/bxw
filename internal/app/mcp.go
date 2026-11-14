@@ -261,6 +261,32 @@ func mcpTools() []mcpTool {
 			},
 		},
 		{
+			Name:        "close_tab",
+			Description: "Close an open tab by tab ID.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"tab":     str("Tab ID to close."),
+					"browser": str("Browser name."),
+				},
+				"required": []string{"tab"},
+			},
+			run: func(args map[string]any) (string, error) {
+				bName, err := resolveBrowser(argString(args, "browser"))
+				if err != nil {
+					return "", err
+				}
+				tab := argString(args, "tab")
+				_, err = daemon.Call(bName, "close_tab", map[string]any{
+					"tab": tab,
+				})
+				if err != nil {
+					return "", err
+				}
+				return fmt.Sprintf("closed tab %s", short(tab)), nil
+			},
+		},
+		{
 			Name:        "goto",
 			Description: "Navigate an existing tab to a new URL.",
 			InputSchema: map[string]any{

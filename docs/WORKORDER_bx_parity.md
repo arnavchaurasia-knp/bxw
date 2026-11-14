@@ -37,7 +37,7 @@ Status legend: ⬜ not started · 🔄 in progress · ✅ done · ❌ blocked (w
 | W6 | `drag` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W7 | `upload` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W8 | `dialog` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| W9 | `close_tab` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| W9 | `close_tab` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W10 | `console` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | W11 | `network` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | W12 | `storage` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -234,10 +234,10 @@ Import `github.com/chromedp/cdproto/page`, `github.com/chromedp/cdproto/cdp`, `c
 ---
 
 ## W9 — `close_tab`
-**Status:** ⬜ not started
+**Status:** ✅ done
 **Checklist**
-- [ ] daemon op · [ ] CLI · [ ] MCP · [ ] usage · [ ] test · [ ] committed
-- Evidence: _()_
+- [x] daemon op · [x] CLI · [x] MCP · [x] usage · [x] test · [x] committed
+- Evidence: _(verified via TestActionsLiveEndToEnd: opened second tab and closed it via close_tab target.CloseTarget)_
 
 **Implementation prompt:**
 1. `server.go`: `case "close_tab":` read `tab`. `t, err := d.findTab(tab)` (resolves short ids). Get browser conn `bconn, err := d.browserConn(ctx)`; `cdp.Call(ctx, bconn, target.CloseTarget, target.CloseTargetParams{TargetID: cdp.TargetID(t.ID)})` (import `github.com/chromedp/cdproto/target`).

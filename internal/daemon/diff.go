@@ -77,6 +77,16 @@ func LoadTabState(browser, tabID string) (TabState, error) {
 	return st, nil
 }
 
+// DeleteTabState removes the stored baseline snapshot for a tab from disk.
+func DeleteTabState(browser, tabID string) error {
+	p := osport.Current()
+	target := filepath.Join(p.StateDir(browser), shortTabID(tabID)+".json")
+	if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 // DiffSnapshots produces a terse delta between a baseline and the current snapshot.
 func DiffSnapshots(baseline []SnapNode, current []SnapNode) (diff string, changedCount int) {
 	if len(baseline) == 0 {
