@@ -2,7 +2,6 @@ package app
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"text/tabwriter"
 
@@ -67,16 +66,29 @@ type doctorCheck struct {
 }
 
 func runDoctor() error {
-	fmt.Println("bxw doctor —", Version)
+	out, err := inspectDoctor("")
+	if err != nil {
+		return err
+	}
+	fmt.Print(out)
+	return nil
+}
+
+func inspectDoctor(browserFilter string) (string, error) {
+	var buf strings.Builder
+	buf.WriteString("bxw doctor — " + Version + "\n")
 	bs := browser.Installed()
 	if len(bs) == 0 {
-		return exit.New(exit.NotFound, "no supported Chromium browser found on this machine")
+		return "", exit.New(exit.NotFound, "no supported Chromium browser found on this machine")
 	}
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	w := tabwriter.NewWriter(&buf, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "STATUS\tCHECK\tDETAIL")
 
 	for _, b := range bs {
+		if browserFilter != "" && b.Name != browserFilter {
+			continue
+		}
 		// 1. Installed
 		fmt.Fprintf(w, "ok\t%s installed\t%s\n", b.Label, b.Exe)
 
@@ -119,6 +131,9 @@ func runDoctor() error {
 		fmt.Fprintf(w, "info\t%s daemon\t%s\n", b.Label, daemonStatus)
 	}
 
-	return w.Flush()
+	if err := w.Flush(); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
 }
 

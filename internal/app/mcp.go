@@ -983,5 +983,113 @@ func mcpTools() []mcpTool {
 				return string(data), nil
 			},
 		},
+		{
+			Name:        "doctor",
+			Description: "Self-check browsers, profiles, process status, debugging preference, and daemon state on this machine.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"browser": str("Optional browser name to inspect."),
+				},
+			},
+			run: func(args map[string]any) (string, error) {
+				return inspectDoctor(argString(args, "browser"))
+			},
+		},
+		{
+			Name:        "setup",
+			Description: "Toggle the remote-debugging preference for a browser in Local State.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"browser": str("Browser name."),
+					"off":     boolean("Disable remote debugging when true (revert)."),
+				},
+			},
+			run: func(args map[string]any) (string, error) {
+				bName, err := resolveBrowser(argString(args, "browser"))
+				if err != nil {
+					return "", err
+				}
+				b, ok := browser.Find(bName)
+				if !ok {
+					return "", exit.New(exit.NotFound, "browser %q not found", bName)
+				}
+				off, _ := args["off"].(bool)
+				if off {
+					if err := b.SetDebugging(false); err != nil {
+						return "", err
+					}
+					return fmt.Sprintf("reverted: remote debugging disabled for %s", b.Label), nil
+				}
+				if b.Running() {
+					return "", exit.New(exit.User, "quit %s first: it rewrites its settings on exit", b.Label)
+				}
+				if err := b.SetDebugging(true); err != nil {
+					return "", err
+				}
+				return fmt.Sprintf("enabled remote debugging for %s in Local State", b.Label), nil
+			},
+		},
+		{
+			Name:        "launch",
+			Description: "Start an isolated agent browser instance with remote debugging (CDP) enabled.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"browser":      str("Browser name."),
+					"headless":     boolean("Run browser in headless mode (default: false)."),
+					"url":          str("Initial URL to open (default: about:blank)."),
+					"real_profile": boolean("Launch with real profile (Brave only; blocked on Chrome/Edge 136+)."),
+				},
+			},
+			run: func(args map[string]any) (string, error) {
+				bName, err := resolveBrowser(argString(args, "browser"))
+				if err != nil {
+					return "", err
+				}
+				headless, _ := args["headless"].(bool)
+				realProfile, _ := args["real_profile"].(bool)
+				targetURL := argString(args, "url")
+				if targetURL == "" {
+					targetURL = "about:blank"
+				}
+				data, err := daemon.Call(bName, "launch", map[string]any{
+					"headless":     headless,
+					"url":          targetURL,
+					"real_profile": realProfile,
+				})
+				if err != nil {
+					return "", err
+				}
+				return string(data), nil
+			},
+		},
+		{
+			Name:        "list_profiles",
+			Description: "List all user profiles found for an installed browser.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"browser": str("Browser name."),
+				},
+			},
+			run: func(args map[string]any) (string, error) {
+				bName, err := resolveBrowser(argString(args, "browser"))
+				if err != nil {
+					return "", err
+				}
+				b, ok := browser.Find(bName)
+				if !ok {
+					return "", exit.New(exit.NotFound, "browser %q not found", bName)
+				}
+				ps, err := browser.Profiles(b)
+				if err != nil {
+					return "", exit.New(exit.Upstream, "%v", err)
+				}
+				data, _ := json.Marshal(ps)
+				return string(data), nil
+			},
+		},
 	}
 }

@@ -43,7 +43,7 @@ Status legend: ⬜ not started · 🔄 in progress · ✅ done · ❌ blocked (w
 | W12 | `storage` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W13 | `performance` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W14 | `emulate` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| W15 | MCP parity (`doctor`,`setup`,`launch`,`list_profiles`) | n/a | n/a | ⬜ | ⬜ | ⬜ | ⬜ |
+| W15 | MCP parity (`doctor`,`setup`,`launch`,`list_profiles`) | n/a | n/a | ✅ | ✅ | ✅ | ✅ |
 | W16 | follow mode | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | W-FINAL | parity verification | n/a | n/a | ⬜ | ⬜ | ⬜ | ⬜ |
 
@@ -347,10 +347,10 @@ func (r *ringBuffer) list() []map[string]any { r.mu.Lock(); defer r.mu.Unlock();
 ---
 
 ## W15 — MCP parity for existing CLI verbs
-**Status:** ⬜ not started — daemon ops already exist; ONLY add MCP tools.
+**Status:** ✅ done — daemon ops already exist; ONLY add MCP tools.
 **Checklist**
-- [ ] MCP `doctor` · [ ] MCP `setup` · [ ] MCP `launch` · [ ] MCP `list_profiles` · [ ] test · [ ] committed
-- Evidence: _()_
+- [x] MCP `doctor` · [x] MCP `setup` · [x] MCP `launch` · [x] MCP `list_profiles` · [x] test · [x] committed
+- Evidence: _(verified via TestMCPServerInitializeAndTools: doctor, setup, launch, list_profiles present and schema validated)_
 
 **Implementation prompt:**
 1. In `mcp.go` `mcpTools()` add four entries that call the existing daemon ops / CLI builders:
