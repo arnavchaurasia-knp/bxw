@@ -80,7 +80,24 @@ func Serve(browserName string) int {
 	case <-d.stop:
 		log.Printf("stop requested; daemon exiting")
 	}
+	d.teardownBrowser(p)
 	return 0
+}
+
+// teardownBrowser terminates the browser instance this daemon launched into its
+// own persistent bxw profile, so launch→stop cycles leave no orphaned process
+// and the next launch starts clean instead of colliding with the singleton
+// lock. Only the bxw-managed profile path is targeted; a real-profile (brave)
+// attach launched nothing here, and the user's own browser uses a different
+// profile, so neither is touched. The on-disk profile (logins, cookies)
+// persists — only the running process is killed.
+func (d *Daemon) teardownBrowser(p osport.Platform) {
+	profileDir := p.ProfileDir(d.br.Name)
+	if n, err := p.KillByProfileDir(profileDir); err != nil {
+		log.Printf("browser teardown for %s failed: %v", d.br.Name, err)
+	} else if n > 0 {
+		log.Printf("terminated %d browser process(es) for profile %s", n, profileDir)
+	}
 }
 
 func reportStart(err error) int {

@@ -41,6 +41,19 @@ func (d *Daemon) launch(headless bool, targetURL string, realProfile bool) error
 	}
 	_ = os.MkdirAll(profileDir, 0o755)
 
+	// Reuse an already-running instance for this profile instead of spawning a
+	// colliding one. Chromium's single-instance lock routes a second process
+	// with the same --user-data-dir to the existing one and silently ignores the
+	// new --remote-debugging-port, so the fresh port would never bind ("CDP did
+	// not come up"). If CDP is already answering for this profile, attach to it.
+	if port, ok := cdpFromProfile(profileDir); ok {
+		d.mu.Lock()
+		d.cdpPort = port
+		d.mu.Unlock()
+		_ = os.WriteFile(portFile(p, d.br.Name), []byte(fmt.Sprint(port)), 0o644)
+		return nil
+	}
+
 	args := []string{
 		fmt.Sprintf("--remote-debugging-port=%d", port),
 		"--user-data-dir=" + profileDir,
@@ -179,6 +192,29 @@ func (d *Daemon) discoverPort() (int, error) {
 	d.cdpPort = port
 	d.mu.Unlock()
 	return port, nil
+}
+
+// cdpFromProfile returns the active CDP port for a launched profile if an
+// instance is already running. Chromium writes the real debugging port to
+// <user-data-dir>/DevToolsActivePort (first line). A stale file from a killed
+// instance fails the waitCDP probe and is treated as "not running".
+func cdpFromProfile(profileDir string) (int, bool) {
+	data, err := os.ReadFile(filepath.Join(profileDir, "DevToolsActivePort"))
+	if err != nil {
+		return 0, false
+	}
+	line := strings.TrimSpace(string(data))
+	if i := strings.IndexByte(line, '\n'); i >= 0 {
+		line = strings.TrimSpace(line[:i])
+	}
+	port, err := strconv.Atoi(line)
+	if err != nil || port == 0 {
+		return 0, false
+	}
+	if waitCDP(port, time.Second) != nil {
+		return 0, false
+	}
+	return port, true
 }
 
 func portFile(p osport.Platform, browser string) string {

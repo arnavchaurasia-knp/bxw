@@ -75,6 +75,15 @@ type Platform interface {
 	SpawnDaemon(self, browser, logPath string) (*os.Process, io.ReadCloser, error)
 	// ProcessRunning reports whether any running process has the given executable name.
 	ProcessRunning(exeName string) bool
+	// KillByProfileDir terminates every browser process whose command line
+	// references the given --user-data-dir profile directory, and reports how
+	// many were killed. It matches on the profile path (never the image name),
+	// so it only ever touches bxw-managed instances — never the user's own
+	// browser running a different profile. This is what makes launch→stop
+	// cycles clean: on stop the daemon tears down the instance it launched, so
+	// the next launch starts fresh instead of colliding with Chromium's
+	// single-instance lock (which silently drops --remote-debugging-port).
+	KillByProfileDir(profileDir string) (killed int, err error)
 }
 
 // Current returns the platform adapter for this build's GOOS.

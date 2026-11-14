@@ -149,3 +149,8 @@ func (stubPlatform) SpawnDetached(name string, args []string) (int, error) {
 }
 
 func (stubPlatform) ProcessRunning(exeName string) bool { return false }
+
+// KillByProfileDir is a best-effort no-op on non-Windows builds (which carry no
+// browser table yet). Real macOS/Linux adapters will match on the profile path
+// via the platform's process API, as the Windows adapter does.
+func (stubPlatform) KillByProfileDir(profileDir string) (int, error) { return 0, nil }
