@@ -31,7 +31,7 @@ Status legend: ⬜ not started · 🔄 in progress · ✅ done · ❌ blocked (w
 |---|---|---|---|---|---|
 | L1 | CI is green on the real repo | verify | ✅ | yes | ✅ |
 | L2 | Release pipeline produces working binaries | verify | ✅ | yes | ✅ |
-| L3 | `npx bxw mcp` works from a clean machine | verify | ⬜ | n/a | ⬜ |
+| L3 | `npx bxw mcp` works from a clean machine | verify | ✅ | yes | ✅ |
 | L4 | Fix: `fill` on `date`/`time`/`color` inputs | bug | ⬜ | ⬜ | ⬜ |
 | L5 | Fix: `open` profile-probe timeout on fresh profile | bug | ⬜ | ⬜ | ⬜ |
 | L6 | Fix: `close_tab` on last tab — clear UX | bug | ⬜ | ⬜ | ⬜ |
@@ -131,15 +131,15 @@ ok      Chromium installed               C:\Program Files\Google\Chrome\Applicat
 ---
 
 ## L3 — `npx bxw mcp` works from a clean machine
-**Status:** ⬜
+**Status:** ✅
 **Why:** this is the actual install path agents will use. The Windows `.exe` resolution fix
 (M7) must be proven end-to-end.
 
 **Checklist**
-- [ ] In a fresh temp dir, `npm pack` the local `npm/bxw` launcher + subpackages, install the tarball.
-- [ ] Run `npx bxw doctor` — resolves the win32 subpackage, spawns `bx.exe`, exits 0.
-- [ ] Run `npx bxw mcp` — emits a valid MCP `initialize` response on stdio (pipe a handshake in).
-- [ ] Confirm the launcher resolves `bx.exe` (not `bx`) on win32 (the M7 critical fix).
+- [x] In a fresh temp dir, `npm pack` the local `npm/bxw` launcher + subpackages, install the tarball.
+- [x] Run `npx bxw doctor` — resolves the win32 subpackage, spawns `bxw.exe`, exits 0.
+- [x] Run `npx bxw mcp` — emits a valid MCP `initialize` response on stdio (pipe a handshake in).
+- [x] Confirm the launcher resolves `bxw.exe` (not `bx`) on win32 (the M7 critical fix).
 
 **Implementation prompt:** build subpackages via `scripts/npm-build.sh` (or the documented build),
 `npm pack npm/bxw-win32-x64` etc., then `npm i ./*.tgz` in a scratch dir, then `npx bxw doctor`.
@@ -147,7 +147,20 @@ For the MCP check, pipe one `{"jsonrpc":"2.0","id":1,"method":"initialize",...}`
 `npx bxw mcp` and assert a JSON response with `serverInfo`.
 
 **Acceptance:** `npx bxw doctor` exits 0 from a clean install; MCP initialize returns serverInfo.
-**Evidence:** _paste both outputs_
+**Evidence:**
+```
+$ npx bxw doctor
+bxw doctor — 0.1.0
+STATUS  CHECK                            DETAIL
+ok      Microsoft Edge installed         C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe
+ok      Microsoft Edge profiles          1 profile(s)
+ok      Brave installed                  C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe
+ok      Google Chrome installed          C:\Program Files\Google\Chrome\Application\chrome.exe
+ok      Chromium installed               C:\Program Files\Google\Chrome\Application\chrome.exe
+
+$ '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test-client","version":"1.0"}}}' | npx bxw mcp
+{"jsonrpc":"2.0","id":1,"result":{"capabilities":{"resources":{},"tools":{}},"instructions":"bxw drives the user's running Windows Chromium browser (Edge, Brave, Chrome) over CDP...","protocolVersion":"2024-11-05","serverInfo":{"name":"bxw","version":"0.1.0"}}}
+```
 
 ---
 
