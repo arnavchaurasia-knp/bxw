@@ -71,17 +71,43 @@ func runLiveActionsOnBrowser(t *testing.T, targetBrowser browser.Browser) {
 	}()
 
 	// 2. Find the tab
-	tabs, err := d.listTabs()
-	if err != nil {
-		t.Fatalf("listTabs: %v", err)
+	var tabID string
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		tabs, err := d.listTabs()
+		if err == nil && len(tabs) > 0 {
+			for _, tab := range tabs {
+				if strings.HasPrefix(tab.URL, ts.URL) {
+					tabID = tab.ID
+					break
+				}
+			}
+			if tabID == "" && tabs[0].URL != "about:blank" {
+				tabID = tabs[0].ID
+			}
+			if tabID == "" && len(tabs) > 0 {
+				tabID = tabs[0].ID
+			}
+		}
+		if tabID != "" {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
-	if len(tabs) == 0 {
+	if tabID == "" {
 		t.Fatal("expected at least 1 tab open")
 	}
-	tabID := tabs[0].ID
 
 	// Wait for test server page to load completely before taking initial snapshot
-	_, _ = d.wait(tabID, waitCond{Load: true}, 5*time.Second)
+	if _, err := d.wait(tabID, waitCond{Selector: "input#username"}, 10*time.Second); err != nil {
+		// If initial launch stayed on about:blank or was delayed, navigate explicitly
+		if _, navErr := d.gotoURL(tabID, ts.URL, 10*time.Second); navErr != nil {
+			t.Fatalf("goto %s: %v", ts.URL, navErr)
+		}
+		if _, err := d.wait(tabID, waitCond{Selector: "input#username"}, 10*time.Second); err != nil {
+			t.Fatalf("wait for input#username on %s: %v", tabID, err)
+		}
+	}
 
 	// 3. Take snapshot
 	snap, err := d.snapshot(tabID, true, "", "", 15*time.Second)
