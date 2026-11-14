@@ -123,6 +123,12 @@ func (d *Daemon) actOn(tabID string, timeout time.Duration, fn func(ctx context.
 	return r, nil
 }
 
+// F5 threshold constants: when mutations exceed these ratios, snapshot returns wholesale replacement.
+const (
+	WholesaleThresholdChangedRatio = 0.70 // Changed nodes >= 70% of baseline
+	WholesaleThresholdTextLenRatio = 0.85 // Diff text length >= 85% of full snapshot text
+)
+
 func (d *Daemon) snapshot(tabID string, full bool, scopeRef, findQuery string, timeout time.Duration) (Snapshot, error) {
 	sess, err := d.tabSession(tabID)
 	if err != nil {
@@ -178,8 +184,8 @@ func (d *Daemon) snapshot(tabID string, full bool, scopeRef, findQuery string, t
 			// F5: If the diff degenerates to ~full page replacement (changed >= 70% of baseline,
 			// or diff length >= 85% of full snapshot text), return full snapshot with note and reset baseline
 			fullTextLen := len(Snapshot{URL: url, Title: title, Nodes: nodes}.Text())
-			isWholesale := (float64(changedCount) >= 0.7*float64(len(base.Nodes))) ||
-				(fullTextLen > 0 && float64(len(diff)) >= 0.85*float64(fullTextLen))
+			isWholesale := (float64(changedCount) >= WholesaleThresholdChangedRatio*float64(len(base.Nodes))) ||
+				(fullTextLen > 0 && float64(len(diff)) >= WholesaleThresholdTextLenRatio*float64(fullTextLen))
 
 			if isWholesale {
 				snap.PageReplaced = true

@@ -35,7 +35,7 @@ Status legend: ⬜ not started · 🔄 in progress · ✅ done · ❌ blocked (w
 | L4 | Fix: `fill` on `date`/`time`/`color` inputs | bug | ✅ | yes | ✅ |
 | L5 | Fix: `open` profile-probe timeout on fresh profile | bug | ✅ | yes | ✅ |
 | L6 | Fix: `close_tab` on last tab — clear UX | bug | ✅ | yes | ✅ |
-| L7 | Test: F5 wholesale-diff threshold | test | ⬜ | ⬜ | ⬜ |
+| L7 | Test: F5 wholesale-diff threshold | test | ✅ | yes | ✅ |
 | L8 | CODE_OF_CONDUCT.md | community | ⬜ | ⬜ | ⬜ |
 | L9 | Issue + PR templates | community | ⬜ | ⬜ | ⬜ |
 | L10 | CHANGELOG.md (Keep a Changelog) | release | ⬜ | ⬜ | ⬜ |
@@ -259,21 +259,35 @@ closed tab 64C63041
 ---
 
 ## L7 — Test: F5 wholesale-diff threshold
-**Status:** ⬜
+**Status:** ✅
 **Why:** F5 (snapshot emits a wholesale replace instead of a +/-/~ diff past a change threshold) was
 fixed in code but has no regression test — it will silently rot.
 
 **Checklist**
-- [ ] Add a test in the daemon snapshot suite: baseline snapshot, then a page mutation under the
+- [x] Add a test in the daemon snapshot suite: baseline snapshot, then a page mutation under the
       threshold → asserts a `+/-/~` delta; a mutation over the threshold → asserts a wholesale replace.
-- [ ] Use a `data:` URL page so it is hermetic (no network).
+- [x] Use a `data:` URL page so it is hermetic (no network).
 
 **Implementation prompt:** read the F5 logic in `internal/daemon/actions.go` `snapshot` (~line 171)
 to find the threshold constant. Write a table test driving two mutation sizes against a `data:` form,
 asserting delta vs wholesale. Pin the threshold value in the test so changing it is a conscious act.
 
 **Acceptance:** `go test ./internal/daemon -run Snapshot -count=1` green with the new cases.
-**Evidence:** _paste the test run_
+**Evidence:**
+```
+=== RUN   TestDiffSnapshots
+--- PASS: TestDiffSnapshots (0.00s)
+=== RUN   TestSnapshotPageReplacedFormatting
+--- PASS: TestSnapshotPageReplacedFormatting (0.00s)
+=== RUN   TestSnapshotWholesaleDiffThresholdsPinned
+--- PASS: TestSnapshotWholesaleDiffThresholdsPinned (0.00s)
+=== RUN   TestSnapshotWholesaleDiffThreshold
+--- PASS: TestSnapshotWholesaleDiffThreshold (0.68s)
+=== RUN   TestBuildSnapshotFiltersAndRefs
+--- PASS: TestBuildSnapshotFiltersAndRefs (0.00s)
+PASS
+ok  	bxw/internal/daemon	3.590s
+```
 
 ---
 
