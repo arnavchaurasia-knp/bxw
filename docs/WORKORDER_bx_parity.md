@@ -30,7 +30,7 @@ Status legend: ⬜ not started · 🔄 in progress · ✅ done · ❌ blocked (w
 | # | Tool | Daemon op | CLI | MCP | Test | Committed | Status |
 |---|---|---|---|---|---|---|---|
 | W1 | `cdp` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| W2 | `goto` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| W2 | `goto` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W3 | `wait` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | W4 | `read` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | W5 | `hover` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -106,10 +106,10 @@ Status legend: ⬜ not started · 🔄 in progress · ✅ done · ❌ blocked (w
 ---
 
 ## W2 — `goto` (navigate the current tab)
-**Status:** ⬜ not started
+**Status:** ✅ done
 **Checklist**
-- [ ] daemon op `goto` · [ ] CLI `runGoto` · [ ] MCP `goto` · [ ] usage · [ ] test · [ ] committed
-- Evidence: _()_
+- [x] daemon op `goto` · [x] CLI `runGoto` · [x] MCP `goto` · [x] usage · [x] test · [x] committed
+- Evidence: _(verified via TestActionsLiveEndToEnd: goto -> navigated to http://127.0.0.1:55188/late (M4 Action Test))_
 
 **Implementation prompt:**
 1. Create `internal/daemon/nav.go` (package `daemon`). Add method:

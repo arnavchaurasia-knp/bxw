@@ -146,4 +146,21 @@ func TestActionsLiveEndToEnd(t *testing.T) {
 		t.Fatalf("expected cdp eval result 2, got %v", evalOut.Result.Value)
 	}
 	t.Logf("CDP dispatch verified: %s", string(resp.Data))
+
+	// Test W2 goto dispatch
+	gotoResp := d.dispatch(Request{
+		Op: "goto",
+		Args: map[string]any{
+			"tab": tabID,
+			"url": ts.URL + "/late",
+		},
+	})
+	if gotoResp.Error != "" {
+		t.Fatalf("dispatch goto error: %s", gotoResp.Error)
+	}
+	var gotoRes ActResult
+	if err := json.Unmarshal(gotoResp.Data, &gotoRes); err != nil {
+		t.Fatalf("unmarshal goto result %s: %v", string(gotoResp.Data), err)
+	}
+	t.Logf("goto summary: %s", gotoRes.TerseSummary("goto"))
 }

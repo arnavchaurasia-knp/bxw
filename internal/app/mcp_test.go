@@ -77,7 +77,7 @@ func TestMCPServerInitializeAndTools(t *testing.T) {
 		}
 	}
 
-	requiredTools := []string{"list_browsers", "list_tabs", "open", "snapshot", "screenshot", "click", "fill", "type", "key", "eval", "cdp"}
+	requiredTools := []string{"list_browsers", "list_tabs", "open", "goto", "snapshot", "screenshot", "click", "fill", "type", "key", "eval", "cdp"}
 	for _, req := range requiredTools {
 		if !toolNames[req] {
 			t.Errorf("missing expected MCP tool: %s", req)

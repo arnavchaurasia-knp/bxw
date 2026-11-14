@@ -183,6 +183,19 @@ func (d *Daemon) dispatch(req Request) Response {
 		data, _ := json.Marshal(tab)
 		return Response{Data: data}
 
+	case "goto":
+		tab, _ := req.Args["tab"].(string)
+		targetURL, _ := req.Args["url"].(string)
+		if targetURL == "" {
+			return errorResponse(exit.New(exit.Validation, "goto requires url"))
+		}
+		res, err := d.gotoURL(tab, targetURL, timeout)
+		if err != nil {
+			return errorResponse(err)
+		}
+		data, _ := json.Marshal(res)
+		return Response{Data: data}
+
 	case "launch":
 		headless := false
 		realProfile := false

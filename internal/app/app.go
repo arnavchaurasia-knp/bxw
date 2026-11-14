@@ -58,6 +58,8 @@ func Run(args []string) error {
 		return runCDP(args[1:])
 	case "open":
 		return runOpen(args[1:])
+	case "goto":
+		return runGoto(args[1:])
 	case "perms":
 		return runPerms(args[1:])
 	case "history":
@@ -93,6 +95,7 @@ usage:
   bxw login <browser> [url]           open persistent profile headed to log in once
   bxw list tabs [browser]             list open tabs of the bxw-managed instance
   bxw open <url> [--profile <name>]   open url in named profile window
+  bxw goto <tab> <url>                navigate the current tab (vs open = new tab)
   bxw setup <browser> [--revert]      enable/disable remote debugging on real profile
   bxw mcp [install [client]]          speak MCP over stdio or install into AI clients
   bxw snapshot <tab> [flags]          accessibility snapshot with stable element refs (e1, e2...)
@@ -836,6 +839,55 @@ func runOpen(args []string) error {
 		profStr = fmt.Sprintf(" in %s (%s)", tab.Profile, tab.ProfileDir)
 	}
 	fmt.Printf("opened %s%s: %s (%s)\n", short(tab.ID), profStr, tab.Title, tab.URL)
+	return nil
+}
+
+func runGoto(args []string) error {
+	var pos []string
+	var browserName string
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--browser":
+			if i+1 < len(args) {
+				browserName = args[i+1]
+				i++
+			}
+		default:
+			if strings.HasPrefix(args[i], "--browser=") {
+				browserName = strings.TrimPrefix(args[i], "--browser=")
+			} else if !strings.HasPrefix(args[i], "-") {
+				pos = append(pos, args[i])
+			}
+		}
+	}
+
+	if len(pos) < 2 {
+		return exit.New(exit.Usage, "usage: bxw goto <tab> <url> [--browser <name>]")
+	}
+
+	tab := pos[0]
+	targetURL := pos[1]
+
+	name, err := resolveBrowser(browserName)
+	if err != nil {
+		return err
+	}
+
+	data, err := daemon.Call(name, "goto", map[string]any{
+		"tab": tab,
+		"url": targetURL,
+	})
+	if err != nil {
+		return err
+	}
+
+	var res daemon.ActResult
+	if err := json.Unmarshal(data, &res); err == nil {
+		fmt.Println(res.TerseSummary("goto"))
+		return nil
+	}
+	fmt.Println(string(data))
 	return nil
 }
 
