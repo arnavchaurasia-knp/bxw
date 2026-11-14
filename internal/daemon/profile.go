@@ -152,14 +152,26 @@ func (d *Daemon) contextFor(ctx context.Context, bconn *TabConn, dir string) (cd
 				return t.BrowserContextID, "", nil
 			}
 		}
-		// If agent instance (single profile "Default"), learn from the first open page context
+		// Fresh profile / single profile Default: learn from first open page context.
+		// On fresh profiles, Chromium may spawn first-run/welcome tabs (e.g. chrome://welcome)
+		// whose BrowserContextID represents the default context.
 		if len(d.profileOf) == 0 && (dir == "Default" || dir == "") {
+			var fallbackTarget *target.Info
 			for _, t := range targets {
-				if t.Type == "page" && t.BrowserContextID != "" {
-					d.profileOf[t.BrowserContextID] = "Default"
-					d.mu.Unlock()
-					return t.BrowserContextID, "", nil
+				if t.Type == "page" {
+					if !strings.HasPrefix(t.URL, "chrome://") && !strings.HasPrefix(t.URL, "edge://") {
+						fallbackTarget = t
+						break
+					}
+					if fallbackTarget == nil {
+						fallbackTarget = t
+					}
 				}
+			}
+			if fallbackTarget != nil {
+				d.profileOf[fallbackTarget.BrowserContextID] = "Default"
+				d.mu.Unlock()
+				return fallbackTarget.BrowserContextID, "", nil
 			}
 		}
 		d.mu.Unlock()
@@ -176,17 +188,37 @@ func (d *Daemon) contextFor(ctx context.Context, bconn *TabConn, dir string) (cd
 	deadline := time.Now().Add(10 * time.Second)
 	marker := browser.ProbeMarker + nonce
 
+	// On a fresh profile, Chrome spawns first-run/welcome tabs (chrome://welcome) that can
+	// swallow or delay the probe URL navigation. We poll for the specific marker probe tab,
+	// but if not seen after a short grace period, relax the predicate to accept the first available
+	// page target (preferring non-internal pages, or accepting first-run pages) associated with the launch.
+	var firstRunFallback *target.Info
 	for time.Now().Before(deadline) && ctx.Err() == nil {
 		all, err := d.browserTargets(ctx, bconn)
 		if err == nil {
 			for _, t := range all {
-				if t.Type == "page" && strings.Contains(t.URL, marker) {
-					d.learn(t.BrowserContextID, dir)
-					return t.BrowserContextID, string(t.TargetID), nil
+				if t.Type == "page" {
+					if strings.Contains(t.URL, marker) {
+						d.learn(t.BrowserContextID, dir)
+						return t.BrowserContextID, string(t.TargetID), nil
+					}
+					// Track potential first-run / welcome tab fallback
+					if firstRunFallback == nil {
+						firstRunFallback = t
+					} else if (strings.HasPrefix(firstRunFallback.URL, "chrome://") || strings.HasPrefix(firstRunFallback.URL, "edge://")) &&
+						(!strings.HasPrefix(t.URL, "chrome://") && !strings.HasPrefix(t.URL, "edge://")) {
+						firstRunFallback = t
+					}
 				}
 			}
 		}
 		time.Sleep(150 * time.Millisecond)
+	}
+
+	// If probe tab was swallowed by a fresh profile first-run window, use the fallback page target
+	if firstRunFallback != nil {
+		d.learn(firstRunFallback.BrowserContextID, dir)
+		return firstRunFallback.BrowserContextID, "", nil
 	}
 
 	return "", "", exit.New(exit.Upstream, "timed out waiting for probe tab in profile %s", dir)
@@ -241,16 +273,15 @@ func (d *Daemon) open(profileRef, rawURL string, timeout time.Duration) (Tab, er
 		}()
 	}
 
-	// Try Target.createTarget with BrowserContextID directly
+	// Try Target.createTarget directly
 	var newTargetID target.ID
+	createParams := target.CreateTargetParams{URL: rawURL}
 	if ctxID != "" {
-		res, err := cdp.Call(ctx, bconn, target.CreateTarget, target.CreateTargetParams{
-			URL:              rawURL,
-			BrowserContextID: ctxID,
-		})
-		if err == nil && res.TargetID != "" {
-			newTargetID = res.TargetID
-		}
+		createParams.BrowserContextID = ctxID
+	}
+	res, err := cdp.Call(ctx, bconn, target.CreateTarget, createParams)
+	if err == nil && res.TargetID != "" {
+		newTargetID = res.TargetID
 	}
 
 	// Fallback to launchInProfile if createTarget did not return a target ID

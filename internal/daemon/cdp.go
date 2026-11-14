@@ -186,6 +186,7 @@ func (d *Daemon) discoverPort() (int, error) {
 		return 0, notRunning
 	}
 	if err := waitCDP(port, time.Second); err != nil {
+		_ = os.Remove(portFile(p, d.br.Name))
 		return 0, notRunning
 	}
 	d.mu.Lock()

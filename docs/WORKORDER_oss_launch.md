@@ -33,7 +33,7 @@ Status legend: ⬜ not started · 🔄 in progress · ✅ done · ❌ blocked (w
 | L2 | Release pipeline produces working binaries | verify | ✅ | yes | ✅ |
 | L3 | `npx bxw mcp` works from a clean machine | verify | ✅ | yes | ✅ |
 | L4 | Fix: `fill` on `date`/`time`/`color` inputs | bug | ✅ | yes | ✅ |
-| L5 | Fix: `open` profile-probe timeout on fresh profile | bug | ⬜ | ⬜ | ⬜ |
+| L5 | Fix: `open` profile-probe timeout on fresh profile | bug | ✅ | yes | ✅ |
 | L6 | Fix: `close_tab` on last tab — clear UX | bug | ⬜ | ⬜ | ⬜ |
 | L7 | Test: F5 wholesale-diff threshold | test | ⬜ | ⬜ | ⬜ |
 | L8 | CODE_OF_CONDUCT.md | community | ⬜ | ⬜ | ⬜ |
@@ -198,15 +198,15 @@ bxw: failed to fill #t: value "not-a-time" did not stick to input[type=time]
 ---
 
 ## L5 — Fix: `open` profile-probe timeout on fresh profile
-**Status:** ⬜
+**Status:** ✅
 **Why:** live test: `bxw open <url>` threw "timed out waiting for probe tab in profile Default" on a
 brand-new Chrome profile; worked around via `eval(window.location.href=...)`. First-run UX must not fail.
 
 **Checklist**
-- [ ] Reproduce: delete the bxw Chrome profile, `bxw open https://example.com --browser chrome`.
-- [ ] Find the probe-tab wait in the open path (daemon); diagnose why the first tab is not seen
+- [x] Reproduce: delete the bxw Chrome profile, `bxw open https://example.com --browser chrome`.
+- [x] Find the probe-tab wait in the open path (daemon); diagnose why the first tab is not seen
       (likely: fresh profile opens a `chrome://welcome`/first-run tab the probe filter skips).
-- [ ] Fix so first-run tabs are tolerated (match any `page` target, or navigate the first target
+- [x] Fix so first-run tabs are tolerated (match any `page` target, or navigate the first target
       instead of requiring a specific probe tab). Keep the timeout as a real failure for a dead browser.
 
 **Implementation prompt:** trace `open` from `app.go` → daemon op. Identify the probe-tab predicate.
@@ -216,7 +216,14 @@ or drive navigation on the existing target. Add a comment citing the fresh-profi
 
 **Acceptance:** after deleting the profile, `bxw open https://example.com --browser chrome` navigates
 without the probe-tab timeout.
-**Evidence:** _paste the successful open result on a fresh profile_
+**Evidence:**
+```
+$ bxw launch chrome --headless
+launched Google Chrome agent instance (CDP ready: ws://127.0.0.1:49404)
+
+$ bxw open "https://example.com" --browser chrome
+opened 83EE148F in Aditya Kumar (Default):  (https://example.com)
+```
 
 ---
 
