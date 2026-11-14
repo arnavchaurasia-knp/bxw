@@ -25,8 +25,19 @@ func TestActionsLiveEndToEnd(t *testing.T) {
 	if len(bs) == 0 {
 		t.Skip("no supported Chromium browser found on this machine")
 	}
-	targetBrowser := bs[0]
 
+	// Run full live smoke on all installed browsers (Edge, Chrome)
+	for _, targetBrowser := range bs {
+		if targetBrowser.Name != "edge" && targetBrowser.Name != "chrome" {
+			continue
+		}
+		t.Run(targetBrowser.Name, func(t *testing.T) {
+			runLiveActionsOnBrowser(t, targetBrowser)
+		})
+	}
+}
+
+func runLiveActionsOnBrowser(t *testing.T, targetBrowser browser.Browser) {
 	// Start local test server serving testdata/form.html
 	testHTML, err := os.ReadFile(filepath.Join("..", "..", "testdata", "form.html"))
 	if err != nil {

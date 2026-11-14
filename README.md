@@ -115,34 +115,49 @@ bxw setup edge --revert
 | `bxw list browsers` | List all installed Chromium browsers, binary paths, and user data directories |
 | `bxw list profiles <browser>` | List all profile directories and human-readable names for a browser |
 | `bxw launch <browser> [url]` | Launch an isolated temporary agent instance on a dynamic CDP port |
-| `bxw list tabs [browser]` | List open tabs (tab ID, title, URL) across connected instances |
-| `bxw open <browser> <url> [--profile <name>]` | Open a URL in a new tab, optionally targeting a specific profile |
-| `bxw snapshot [browser] [--tab <id>]` | Print indented AXTree element snapshot with `e1`, `e2` refs |
-| `bxw click <ref> [browser] [--tab <id>]` | Click an element by its snapshot reference |
-| `bxw fill <ref> <text> [browser] [--tab <id>]` | Focus, clear, and populate text into an input or textarea |
-| `bxw type <ref> <text> [--submit]` | Type characters sequentially into an element, optional Enter submit |
-| `bxw key <key> [browser] [--tab <id>]` | Dispatch a keypress (e.g. `Enter`, `Tab`, `Escape`, `ArrowDown`) |
-| `bxw eval <code> [browser] [--tab <id>]` | Evaluate a JavaScript expression in the tab's execution context |
+| `bxw login <browser> [url]` | Open persistent profile headed to log in once (persisting session across runs) |
+| `bxw list tabs [browser]` | List open tabs (tab ID, profile, title, URL) across connected instances |
+| `bxw open <url> [--profile <name>] [--follow]` | Open a URL in a new tab, optionally targeting a specific profile |
+| `bxw close-tab <tab>` | Close a single open tab |
+| `bxw goto <tab> <url> [--follow]` | Navigate the tab to a new URL |
+| `bxw wait <tab> [--selector s\|--text t\|--load\|--ms N]` | Wait for selector, text, load completion, or sleep |
+| `bxw read <tab> [--ref e12] [--max 20000]` | Read readable text content from the page or subtree |
+| `bxw dialog <tab> <accept\|dismiss> [--text t]` | Respond to JavaScript alert, confirm, or prompt dialog |
+| `bxw console <tab> [--level lvl] [--limit N]` | Tail captured console and error logs |
+| `bxw network <tab> [--filter s] [--id reqID]` | Inspect captured network requests and responses |
+| `bxw storage <tab>` | Inspect cookies, localStorage and sessionStorage |
+| `bxw performance <tab>` | Audit Core Web Vitals (LCP, FCP, CLS, TTFB, DOM size, heap) |
+| `bxw emulate <tab> [flags]` | Emulate mobile/desktop, network throttling, CPU, geolocation, color scheme |
+| `bxw snapshot <tab> [flags]` | Print indented AXTree element snapshot with `e1`, `e2` refs |
+| `bxw screenshot <tab> [flags]` | Capture viewport PNG, saving to content-addressed cache |
+| `bxw click <tab> <ref\|sel> [--double]` | Click an element by its snapshot reference or CSS selector |
+| `bxw hover <tab> <ref\|sel>` | Hover mouse over an element |
+| `bxw drag <tab> <from> <to>` | Drag element to destination element |
+| `bxw upload <tab> <ref\|sel> <file>...` | Set files on an input[type=file] element |
+| `bxw fill <tab> <ref\|sel> <val>...` | Focus, clear, and populate text into an input or textarea |
+| `bxw type <tab> <text> [--submit <k>]` | Type characters sequentially into active element, optional submit key |
+| `bxw key <tab> <combo>` | Dispatch a keypress (e.g. `Enter`, `Tab`, `Escape`, `Control+A`) |
+| `bxw eval <tab> <expr>` | Evaluate a JavaScript expression in the tab's execution context |
+| `bxw cdp <tab> <Domain.method> [--params <json>]` | Send any raw Chrome DevTools Protocol command |
+| `bxw perms [list\|grant\|revoke]` | Inspect and manage capability permissions |
+| `bxw history [browser] [flags]` | Query navigation history (--since, --grep, --profile) |
+| `bxw context [browser] [--session id]` | View session context summary |
+| `bxw clean [--all]` | Clean cache, stale state, and logs |
 | `bxw setup <browser> [--revert]` | Toggle `devtools.remote_debugging.user-enabled` in `Local State` |
 | `bxw stop <browser>` | Terminate the background daemon and disconnect CDP sessions |
-| `bxw mcp serve` | Run the Model Context Protocol (MCP) server over stdio |
-| `bxw mcp install [--target all\|claude\|cursor\|antigravity]` | Automatically register the `bxw` MCP server with agent configurations |
+| `bxw mcp` | Speak Model Context Protocol (MCP) over stdio |
+| `bxw mcp install [client]` | Automatically register the `bxw` MCP server with agent configurations |
 
 ---
 
 ## Model Context Protocol (MCP) Setup
 
-`bxw` includes a zero-dependency, JSON-RPC 2.0 stdio MCP server exposing 9 browser automation tools:
+`bxw` includes a zero-dependency, JSON-RPC 2.0 stdio MCP server exposing full tool-for-tool parity with `@facets-cloud/bx` v0.4.1 (28 tools):
 
-1. `list_browsers`
-2. `list_tabs`
-3. `open`
-4. `snapshot`
-5. `click`
-6. `fill`
-7. `type`
-8. `key`
-9. `eval`
+- **Setup**: `doctor`, `list_browsers`, `setup`, `launch`
+- **Read**: `list_profiles`, `list_tabs`, `snapshot`, `read`, `screenshot`, `eval`, `wait`
+- **Act**: `open`, `goto`, `click`, `hover`, `drag`, `fill`, `type`, `key`, `upload`, `dialog`, `close_tab`
+- **Debug**: `console`, `network`, `storage`, `performance`, `emulate`, `cdp`
 
 ### Automatic Setup
 Run:

@@ -45,7 +45,7 @@ Status legend: ⬜ not started · 🔄 in progress · ✅ done · ❌ blocked (w
 | W14 | `emulate` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W15 | MCP parity (`doctor`,`setup`,`launch`,`list_profiles`) | n/a | n/a | ✅ | ✅ | ✅ | ✅ |
 | W16 | follow mode | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| W-FINAL | parity verification | n/a | n/a | ⬜ | ⬜ | ⬜ | ⬜ |
+| W-FINAL | parity verification | n/a | n/a | ✅ | ✅ | ✅ | ✅ |
 
 **Build order (respect dependencies):** W1 → W2,W3,W4 → W5,W6,W7,W8,W9 → W10,W11 (shared capture) → W12,W13,W14 → W15 → W16 → W-FINAL.
 
@@ -378,10 +378,10 @@ func (r *ringBuffer) list() []map[string]any { r.mu.Lock(); defer r.mu.Unlock();
 ---
 
 ## W-FINAL — parity verification
-**Status:** ⬜ not started
+**Status:** ✅ done
 **Checklist**
-- [ ] MCP `tools/list` equals bx set · [ ] vet+test+linux green · [ ] live smoke Edge+Chrome · [ ] README/usage/mcpInstructions updated · [ ] all rows ✅ · [ ] committed
-- Evidence: _()_
+- [x] MCP `tools/list` equals bx set · [x] vet+test+linux green · [x] live smoke Edge+Chrome · [x] README/usage/mcpInstructions updated · [x] all rows ✅ · [x] committed
+- Evidence: _(verified: TestMCPServerInitializeAndTools validates all 28 bx tools; TestActionsLiveEndToEnd verified live smoke across Edge and Chrome; go vet ./... and linux cross-compile green)_
 
 **Implementation prompt:**
 1. Add an integration test in `internal/app/mcp_test.go`: spawn the MCP server, send `initialize` then `tools/list`, assert the returned tool NAMES are a superset of the bx v0.4.1 set (the table at the top). Fail if any is missing.

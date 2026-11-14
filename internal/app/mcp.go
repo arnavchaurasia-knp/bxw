@@ -143,7 +143,9 @@ func handleMCP(m rpcMsg, tools []mcpTool, byName map[string]mcpTool) rpcMsg {
 
 const mcpInstructions = `bxw drives the user's running Windows Chromium browser (Edge, Brave, Chrome) over CDP. ` +
 	`Start with list_tabs or open, then snapshot a tab: each element gets a ref like e12 that click, ` +
-	`fill and key actions accept. For form submission or buying/deleting, ask the user first.`
+	`fill, type, hover, drag, and upload actions accept. Inspect pages with read, console, network, ` +
+	`storage, and performance; emulate mobile or network with emulate. ` +
+	`For form submission or buying/deleting, ask the user first.`
 
 func callTool(params json.RawMessage, byName map[string]mcpTool) map[string]any {
 	var p struct {
