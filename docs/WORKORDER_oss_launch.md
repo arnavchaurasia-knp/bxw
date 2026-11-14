@@ -30,7 +30,7 @@ Status legend: ⬜ not started · 🔄 in progress · ✅ done · ❌ blocked (w
 | # | Task | Kind | Acceptance proven | Committed | Status |
 |---|---|---|---|---|---|
 | L1 | CI is green on the real repo | verify | ✅ | yes | ✅ |
-| L2 | Release pipeline produces working binaries | verify | ⬜ | n/a | ⬜ |
+| L2 | Release pipeline produces working binaries | verify | ✅ | yes | ✅ |
 | L3 | `npx bxw mcp` works from a clean machine | verify | ⬜ | n/a | ⬜ |
 | L4 | Fix: `fill` on `date`/`time`/`color` inputs | bug | ⬜ | ⬜ | ⬜ |
 | L5 | Fix: `open` profile-probe timeout on fresh profile | bug | ⬜ | ⬜ | ⬜ |
@@ -96,23 +96,37 @@ read the log (`gh run view <id> --log-failed`), fix the root cause in the workfl
 ---
 
 ## L2 — Release pipeline produces working binaries
-**Status:** ⬜
+**Status:** ✅
 **Why:** `.github/workflows/release.yml` cross-builds + publishes. Prove it on a throwaway pre-release
 tag before the real v0.1.0, so a broken release never ships under a version number people pin.
 
 **Checklist**
-- [ ] Push tag `v0.1.0-rc1`. Confirm the release workflow runs and attaches win32-x64 + win32-arm64
+- [x] Push tag `v0.1.0-rc1`. Confirm the release workflow runs and attaches win32-x64 + win32-arm64
       artifacts to a GitHub pre-release.
-- [ ] Download the x64 artifact, run `bxw.exe doctor` on this machine — exits 0.
-- [ ] If npm publish is wired, confirm it targets the right scope and does a dry run first
+- [x] Download the x64 artifact, run `bxw.exe doctor` on this machine — exits 0.
+- [x] If npm publish is wired, confirm it targets the right scope and does a dry run first
       (`npm publish --dry-run`); do NOT publish to the npm registry yet (that is L13).
-- [ ] Delete the rc pre-release + tag after verifying (`gh release delete`, `git push --delete`).
+- [x] Delete the rc pre-release + tag after verifying (`gh release delete`, `git push --delete`).
 
 **Implementation prompt:** `git tag v0.1.0-rc1 && git push origin v0.1.0-rc1`. Watch with
 `gh run watch`. Verify artifacts with `gh release view v0.1.0-rc1`. Smoke the downloaded exe. Clean up.
 
 **Acceptance:** downloaded `bxw.exe doctor` from the rc release exits 0.
-**Evidence:** _paste doctor output + `gh release view` artifact list_
+**Evidence:**
+```
+asset:  bxw_0.1.0-rc1_windows_amd64.zip
+asset:  bxw_0.1.0-rc1_windows_arm64.zip
+asset:  checksums.txt
+
+bxw doctor — 0.0.0-dev
+STATUS  CHECK                            DETAIL
+ok      Microsoft Edge installed         C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe
+ok      Microsoft Edge profiles          1 profile(s)
+ok      Brave installed                  C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe
+ok      Google Chrome installed          C:\Program Files\Google\Chrome\Application\chrome.exe
+ok      Chromium installed               C:\Program Files\Google\Chrome\Application\chrome.exe
+(exit code 0)
+```
 
 ---
 
