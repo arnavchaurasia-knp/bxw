@@ -10,6 +10,7 @@ import (
 
 	"github.com/chromedp/cdproto/accessibility"
 	"github.com/chromedp/cdproto/cdp"
+	"github.com/chromedp/cdproto/dom"
 	"github.com/chromedp/cdproto/input"
 	"github.com/chromedp/cdproto/page"
 
@@ -303,6 +304,44 @@ func (d *Daemon) drag(tabID, from, to string, timeout time.Duration) (ActResult,
 		}
 
 		return nil
+	})
+}
+
+func (d *Daemon) upload(tabID, el string, paths []string, timeout time.Duration) (ActResult, error) {
+	if len(paths) == 0 {
+		return ActResult{}, exit.New(exit.Validation, "upload requires at least one file path")
+	}
+
+	return d.actOn(tabID, timeout, func(ctx context.Context, sess *tabSession) error {
+		if refPattern.MatchString(el) {
+			backend, ok := sess.refs[el]
+			if !ok || (sess.refLoader != "" && sess.loaderID(ctx) != sess.refLoader) {
+				return exit.New(exit.User, "%s is not in this tab's latest snapshot: run bxw snapshot %s again", el, sess.id)
+			}
+			_, err := cdp.Call(ctx, sess.conn, dom.SetFileInputFiles, dom.SetFileInputFilesParams{
+				Files:         paths,
+				BackendNodeID: backend,
+			})
+			return err
+		}
+
+		doc, err := cdp.Call(ctx, sess.conn, dom.GetDocument, dom.GetDocumentParams{})
+		if err != nil || doc.Root == nil {
+			return exit.New(exit.Upstream, "get document: %v", err)
+		}
+		res, err := cdp.Call(ctx, sess.conn, dom.QuerySelector, dom.QuerySelectorParams{
+			NodeID:   doc.Root.NodeID,
+			Selector: el,
+		})
+		if err != nil || res.NodeID == 0 {
+			return exit.New(exit.User, "no element matches selector %q", el)
+		}
+
+		_, err = cdp.Call(ctx, sess.conn, dom.SetFileInputFiles, dom.SetFileInputFilesParams{
+			Files:  paths,
+			NodeID: res.NodeID,
+		})
+		return err
 	})
 }
 

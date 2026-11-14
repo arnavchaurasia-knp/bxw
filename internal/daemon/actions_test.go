@@ -251,4 +251,53 @@ func TestActionsLiveEndToEnd(t *testing.T) {
 		t.Fatalf("unmarshal drag result %s: %v", string(dragResp.Data), err)
 	}
 	t.Logf("drag verified: %s", dragRes.TerseSummary("drag #username -> #submit"))
+
+	// Test W7 upload dispatch
+	// Inject a file input
+	_ = d.dispatch(Request{
+		Op: "eval",
+		Args: map[string]any{
+			"tab":    tabID,
+			"script": `(function(){ var fi=document.createElement('input'); fi.type='file'; fi.id='file-input'; document.body.appendChild(fi); })()`,
+		},
+	})
+	// Create a temp file to upload
+	tmpUpload, err := os.CreateTemp("", "bxw_upload_test_*.txt")
+	if err != nil {
+		t.Fatalf("create temp upload file: %v", err)
+	}
+	tmpUploadPath := tmpUpload.Name()
+	_ = tmpUpload.Close()
+	defer os.Remove(tmpUploadPath)
+
+	uploadResp := d.dispatch(Request{
+		Op: "upload",
+		Args: map[string]any{
+			"tab":      tabID,
+			"selector": "#file-input",
+			"paths":    []any{tmpUploadPath},
+		},
+	})
+	if uploadResp.Error != "" {
+		t.Fatalf("dispatch upload error: %s", uploadResp.Error)
+	}
+	var uploadRes ActResult
+	if err := json.Unmarshal(uploadResp.Data, &uploadRes); err != nil {
+		t.Fatalf("unmarshal upload result %s: %v", string(uploadResp.Data), err)
+	}
+	t.Logf("upload verified: %s", uploadRes.TerseSummary("upload #file-input"))
+
+	// Verify file was set on input
+	var fileName string
+	fileEvalResp := d.dispatch(Request{
+		Op: "eval",
+		Args: map[string]any{
+			"tab":    tabID,
+			"script": "document.getElementById('file-input').files[0].name",
+		},
+	})
+	_ = json.Unmarshal(fileEvalResp.Data, &fileName)
+	if fileName != filepath.Base(tmpUploadPath) {
+		t.Fatalf("expected uploaded file name %q, got %q", filepath.Base(tmpUploadPath), fileName)
+	}
 }

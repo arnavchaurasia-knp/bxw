@@ -35,7 +35,7 @@ Status legend: ⬜ not started · 🔄 in progress · ✅ done · ❌ blocked (w
 | W4 | `read` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W5 | `hover` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W6 | `drag` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| W7 | `upload` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| W7 | `upload` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W8 | `dialog` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | W9 | `close_tab` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | W10 | `console` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -203,10 +203,10 @@ Import `github.com/chromedp/cdproto/page`, `github.com/chromedp/cdproto/cdp`, `c
 ---
 
 ## W7 — `upload`
-**Status:** ⬜ not started
+**Status:** ✅ done
 **Checklist**
-- [ ] daemon op · [ ] CLI · [ ] MCP · [ ] usage · [ ] test · [ ] committed
-- Evidence: _()_
+- [x] daemon op · [x] CLI · [x] MCP · [x] usage · [x] test · [x] committed
+- Evidence: _(verified via TestActionsLiveEndToEnd: upload attached file to file-input; input.files[0].name verified)_
 
 **Implementation prompt:**
 1. `actions.go`: `func (d *Daemon) upload(tabID, el string, paths []string, timeout) (ActResult, error)` via `d.actOn`. Resolve the element's node: mirror `selector()` — if `el` is a ref use `sess.refs[el]` (a `cdp.BackendNodeID`); else `dom.QuerySelector` from the document node to get a node id. Then `cdp.Call(ctx, sess.conn, dom.SetFileInputFiles, dom.SetFileInputFilesParams{Files: paths, BackendNodeID: <id>})`.

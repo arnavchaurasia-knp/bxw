@@ -50,6 +50,8 @@ func Run(args []string) error {
 		return runHover(args[1:])
 	case "drag":
 		return runDrag(args[1:])
+	case "upload":
+		return runUpload(args[1:])
 	case "fill":
 		return runFill(args[1:])
 	case "type":
@@ -115,6 +117,7 @@ usage:
   bxw click <tab> <ref|sel> [--double] click an element by ref or CSS selector
   bxw hover <tab> <ref|sel>           hover over an element by ref or CSS selector
   bxw drag <tab> <from> <to>          drag element to destination element
+  bxw upload <tab> <ref|sel> <file>.. set files on an input[type=file] element
   bxw fill <tab> <ref|sel> <val>...   fill form inputs, selects, or toggles
   bxw type <tab> <text> [--submit <k>] type text into active element
   bxw key <tab> <combo>               press key or combination (e.g. Enter, Control+A)
@@ -614,6 +617,57 @@ func runDrag(args []string) error {
 		return nil
 	}
 	fmt.Printf("drag %s -> %s -> done\n", from, to)
+	return nil
+}
+
+func runUpload(args []string) error {
+	var pos []string
+	var browserName string
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--browser":
+			if i+1 < len(args) {
+				browserName = args[i+1]
+				i++
+			}
+		default:
+			if strings.HasPrefix(args[i], "--browser=") {
+				browserName = strings.TrimPrefix(args[i], "--browser=")
+			} else if !strings.HasPrefix(args[i], "-") {
+				pos = append(pos, args[i])
+			}
+		}
+	}
+
+	if len(pos) < 3 {
+		return exit.New(exit.Usage, "usage: bxw upload <tab> <ref|sel> <file>... [--browser <name>]")
+	}
+
+	tab := pos[0]
+	el := pos[1]
+	files := pos[2:]
+
+	name, err := resolveBrowser(browserName)
+	if err != nil {
+		return err
+	}
+
+	data, err := daemon.Call(name, "upload", map[string]any{
+		"tab":      tab,
+		"selector": el,
+		"paths":    files,
+	})
+	if err != nil {
+		return err
+	}
+
+	var res daemon.ActResult
+	if err := json.Unmarshal(data, &res); err == nil {
+		fmt.Println(res.TerseSummary(fmt.Sprintf("uploaded %d file(s) to %s", len(files), el)))
+		return nil
+	}
+	fmt.Printf("uploaded %d file(s) to %s\n", len(files), el)
 	return nil
 }
 

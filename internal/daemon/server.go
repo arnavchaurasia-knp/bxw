@@ -320,6 +320,26 @@ func (d *Daemon) dispatch(req Request) Response {
 		data, _ := json.Marshal(res)
 		return Response{Data: data}
 
+	case "upload":
+		tab, _ := req.Args["tab"].(string)
+		sel, _ := req.Args["selector"].(string)
+		var paths []string
+		if pSlice, ok := req.Args["paths"].([]any); ok {
+			for _, p := range pSlice {
+				if s, ok := p.(string); ok {
+					paths = append(paths, s)
+				}
+			}
+		} else if pStr, ok := req.Args["paths"].(string); ok {
+			_ = json.Unmarshal([]byte(pStr), &paths)
+		}
+		res, err := d.upload(tab, sel, paths, timeout)
+		if err != nil {
+			return errorResponse(err)
+		}
+		data, _ := json.Marshal(res)
+		return Response{Data: data}
+
 	case "fill":
 		tab, _ := req.Args["tab"].(string)
 		var pairs [][2]string

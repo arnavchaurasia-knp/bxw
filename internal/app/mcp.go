@@ -549,6 +549,52 @@ func mcpTools() []mcpTool {
 			},
 		},
 		{
+			Name:        "upload",
+			Description: "Upload files to a file input element by ref or CSS selector.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"tab":     str("Tab ID."),
+					"element": str("Ref from latest snapshot (e.g. 'e12') or CSS selector to file input."),
+					"paths": map[string]any{
+						"type":        "array",
+						"items":       map[string]any{"type": "string"},
+						"description": "List of local file paths to attach.",
+					},
+					"browser": str("Browser name."),
+				},
+				"required": []string{"tab", "element", "paths"},
+			},
+			run: func(args map[string]any) (string, error) {
+				bName, err := resolveBrowser(argString(args, "browser"))
+				if err != nil {
+					return "", err
+				}
+				el := argString(args, "element")
+				var paths []string
+				if pList, ok := args["paths"].([]any); ok {
+					for _, item := range pList {
+						if s, ok := item.(string); ok {
+							paths = append(paths, s)
+						}
+					}
+				}
+				data, err := daemon.Call(bName, "upload", map[string]any{
+					"tab":      argString(args, "tab"),
+					"selector": el,
+					"paths":    paths,
+				})
+				if err != nil {
+					return "", err
+				}
+				var res daemon.ActResult
+				if err := json.Unmarshal(data, &res); err == nil {
+					return res.TerseSummary(fmt.Sprintf("uploaded %d file(s) to %s", len(paths), el)), nil
+				}
+				return string(data), nil
+			},
+		},
+		{
 			Name:        "fill",
 			Description: "Fill form elements (inputs, textareas, selects, checkboxes) by ref or selector.",
 			InputSchema: map[string]any{
