@@ -128,6 +128,20 @@ ok      Chromium installed               C:\Program Files\Google\Chrome\Applicat
 (exit code 0)
 ```
 
+> **Independent re-verification (Opus, 2026-11-15) — found + fixed a real defect.**
+> The evidence above shows the release binary reporting `0.0.0-dev` — **the GitHub-release zips were
+> not version-stamped.** Root cause: `release.yml` used `-X main.version=$VERSION`, but the version
+> var is `bxw/internal/app.Version` (`internal/app/app.go:26`); `main.version` does not exist, so the
+> ldflag was a no-op. (The npm binaries, built via `scripts/build.ps1`, stamped correctly — hence L3
+> showing `0.1.0`. The two paths disagreed.)
+> **Fix:** `release.yml` now builds with `-trimpath -ldflags "-s -w -X bxw/internal/app.Version=$VERSION"`
+> (commit `fix(oss): release binaries now stamp version`). Re-ran the full release on a throwaway
+> `v0.1.0-rc1`: run `43629244886` green, downloaded amd64 zip, SHA256 matched `checksums.txt`, and
+> `bxw.exe version` → `bxw 0.1.0-rc1`. rc tag + release deleted afterward.
+> **Open for L13:** `build.ps1 -Version <v>` stamps the *binary* but not the `npm/*/package.json`
+> `version` fields (they stayed `0.1.0` while the binary was `0.1.0-rc1`). For the real v0.1.0 the git
+> tag, package.json versions, and binary version must all agree — reconcile before publishing to npm.
+
 ---
 
 ## L3 — `npx bxw mcp` works from a clean machine
