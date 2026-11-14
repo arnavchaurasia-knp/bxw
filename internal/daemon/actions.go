@@ -541,3 +541,51 @@ func (d *Daemon) screenshot(tabID string, timeout time.Duration) ([]byte, error)
 	}
 	return buf.Data, nil
 }
+
+// Read extracts visible innerText from the page or a scoped ref/selector, budgeted by max chars.
+func (d *Daemon) read(tabID, ref string, max int, timeout time.Duration) (string, error) {
+	sess, err := d.tabSession(tabID)
+	if err != nil {
+		return "", err
+	}
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+
+	if err := sess.errIfDialog(); err != nil {
+		return "", err
+	}
+
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	var js string
+	if ref == "" {
+		js = `(document.querySelector('main, article') || document.body || document.documentElement).innerText || ""`
+	} else {
+		sel, err := sess.selector(ctx, ref)
+		if err != nil {
+			sel = ref
+		}
+		js = fmt.Sprintf(`(function(){ var el = document.querySelector(%q); return el ? (el.innerText || "") : ""; })()`, sel)
+	}
+
+	var text string
+	if err := sess.eval(ctx, js, &text); err != nil {
+		return "", err
+	}
+
+	if max <= 0 {
+		max = 20000
+	}
+
+	runes := []rune(text)
+	if len(runes) > max {
+		truncatedCount := len(runes) - max
+		text = string(runes[:max]) + fmt.Sprintf("\n…[truncated %d chars]", truncatedCount)
+	}
+
+	return text, nil
+}

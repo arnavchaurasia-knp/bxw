@@ -339,6 +339,50 @@ func mcpTools() []mcpTool {
 			},
 		},
 		{
+			Name:        "read",
+			Description: "Read the page's visible text content, token-budgeted and optional scoped to a ref or CSS selector.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"tab":     str("Tab ID to read."),
+					"ref":     str("Optional snapshot ref (e.g. 'e12') or CSS selector to scope text extraction."),
+					"max":     number("Maximum characters to return before truncation (default 20000)."),
+					"browser": str("Browser name."),
+				},
+				"required": []string{"tab"},
+			},
+			run: func(args map[string]any) (string, error) {
+				bName, err := resolveBrowser(argString(args, "browser"))
+				if err != nil {
+					return "", err
+				}
+				var max int
+				if m, ok := args["max"].(float64); ok {
+					max = int(m)
+				}
+				readArgs := map[string]any{
+					"tab": argString(args, "tab"),
+				}
+				if r := argString(args, "ref"); r != "" {
+					readArgs["ref"] = r
+				}
+				if max > 0 {
+					readArgs["max"] = max
+				}
+				data, err := daemon.Call(bName, "read", readArgs)
+				if err != nil {
+					return "", err
+				}
+				var res struct {
+					Text string `json:"text"`
+				}
+				if err := json.Unmarshal(data, &res); err == nil {
+					return res.Text, nil
+				}
+				return string(data), nil
+			},
+		},
+		{
 			Name:        "snapshot",
 			Description: "Take an accessibility snapshot of a tab, returning an indented element tree with stable refs (e1, e2...). Returns diffs vs previous snapshot by default to save tokens.",
 			InputSchema: map[string]any{

@@ -62,6 +62,8 @@ func Run(args []string) error {
 		return runGoto(args[1:])
 	case "wait":
 		return runWait(args[1:])
+	case "read":
+		return runRead(args[1:])
 	case "perms":
 		return runPerms(args[1:])
 	case "history":
@@ -99,6 +101,7 @@ usage:
   bxw open <url> [--profile <name>]   open url in named profile window
   bxw goto <tab> <url>                navigate the current tab (vs open = new tab)
   bxw wait <tab> [--selector s|--text t|--load|--ms N]   wait for a condition
+  bxw read <tab> [--ref e12] [--max 20000]   read the page's visible text
   bxw setup <browser> [--revert]      enable/disable remote debugging on real profile
   bxw mcp [install [client]]          speak MCP over stdio or install into AI clients
   bxw snapshot <tab> [flags]          accessibility snapshot with stable element refs (e1, e2...)
@@ -1006,6 +1009,80 @@ func runWait(args []string) error {
 	data, err := daemon.Call(name, "wait", waitArgs)
 	if err != nil {
 		return err
+	}
+
+	fmt.Println(string(data))
+	return nil
+}
+
+func runRead(args []string) error {
+	var pos []string
+	var browserName string
+	var ref string
+	var max int
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--browser":
+			if i+1 < len(args) {
+				browserName = args[i+1]
+				i++
+			}
+		case "--ref":
+			if i+1 < len(args) {
+				ref = args[i+1]
+				i++
+			}
+		case "--max":
+			if i+1 < len(args) {
+				fmt.Sscanf(args[i+1], "%d", &max)
+				i++
+			}
+		default:
+			if strings.HasPrefix(args[i], "--browser=") {
+				browserName = strings.TrimPrefix(args[i], "--browser=")
+			} else if strings.HasPrefix(args[i], "--ref=") {
+				ref = strings.TrimPrefix(args[i], "--ref=")
+			} else if strings.HasPrefix(args[i], "--max=") {
+				fmt.Sscanf(strings.TrimPrefix(args[i], "--max="), "%d", &max)
+			} else if !strings.HasPrefix(args[i], "-") {
+				pos = append(pos, args[i])
+			}
+		}
+	}
+
+	if len(pos) < 1 {
+		return exit.New(exit.Usage, "usage: bxw read <tab> [--ref e12] [--max 20000] [--browser <name>]")
+	}
+
+	tab := pos[0]
+
+	name, err := resolveBrowser(browserName)
+	if err != nil {
+		return err
+	}
+
+	readArgs := map[string]any{
+		"tab": tab,
+	}
+	if ref != "" {
+		readArgs["ref"] = ref
+	}
+	if max > 0 {
+		readArgs["max"] = max
+	}
+
+	data, err := daemon.Call(name, "read", readArgs)
+	if err != nil {
+		return err
+	}
+
+	var res struct {
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(data, &res); err == nil {
+		fmt.Println(res.Text)
+		return nil
 	}
 
 	fmt.Println(string(data))

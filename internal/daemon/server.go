@@ -220,6 +220,22 @@ func (d *Daemon) dispatch(req Request) Response {
 		data, _ := json.Marshal(res)
 		return Response{Data: data}
 
+	case "read":
+		tab, _ := req.Args["tab"].(string)
+		ref, _ := req.Args["ref"].(string)
+		var max int
+		if mVal, ok := req.Args["max"].(float64); ok {
+			max = int(mVal)
+		} else if mInt, ok := req.Args["max"].(int); ok {
+			max = mInt
+		}
+		text, err := d.read(tab, ref, max, timeout)
+		if err != nil {
+			return errorResponse(err)
+		}
+		data, _ := json.Marshal(map[string]any{"text": text})
+		return Response{Data: data}
+
 	case "launch":
 		headless := false
 		realProfile := false

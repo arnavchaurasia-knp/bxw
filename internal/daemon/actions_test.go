@@ -195,4 +195,25 @@ func TestActionsLiveEndToEnd(t *testing.T) {
 		t.Fatalf("expected wait satisfied=true, got %v", waitRes)
 	}
 	t.Logf("wait verified: %+v", waitRes)
+
+	// Test W4 read dispatch
+	readResp := d.dispatch(Request{
+		Op: "read",
+		Args: map[string]any{
+			"tab": tabID,
+		},
+	})
+	if readResp.Error != "" {
+		t.Fatalf("dispatch read error: %s", readResp.Error)
+	}
+	var readRes struct {
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(readResp.Data, &readRes); err != nil {
+		t.Fatalf("unmarshal read result %s: %v", string(readResp.Data), err)
+	}
+	if !strings.Contains(readRes.Text, "Hello Late") {
+		t.Fatalf("expected read text to contain 'Hello Late', got: %q", readRes.Text)
+	}
+	t.Logf("read verified: %q", readRes.Text)
 }

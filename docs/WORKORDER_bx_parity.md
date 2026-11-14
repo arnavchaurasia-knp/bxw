@@ -32,7 +32,7 @@ Status legend: ⬜ not started · 🔄 in progress · ✅ done · ❌ blocked (w
 | W1 | `cdp` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W2 | `goto` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W3 | `wait` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| W4 | `read` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| W4 | `read` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W5 | `hover` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | W6 | `drag` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | W7 | `upload` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -154,10 +154,10 @@ Import `github.com/chromedp/cdproto/page`, `github.com/chromedp/cdproto/cdp`, `c
 ---
 
 ## W4 — `read` (page text, token-budgeted)
-**Status:** ⬜ not started
+**Status:** ✅ done
 **Checklist**
-- [ ] daemon op · [ ] CLI · [ ] MCP · [ ] usage · [ ] test · [ ] committed
-- Evidence: _()_
+- [x] daemon op · [x] CLI · [x] MCP · [x] usage · [x] test · [x] committed
+- Evidence: _(verified via TestActionsLiveEndToEnd: read returned page text containing 'Hello Late')_
 
 **Implementation prompt:**
 1. In `actions.go` add `func (d *Daemon) read(tabID, ref string, max int, timeout time.Duration) (string, error)`. `sess, _ := d.tabSession`; lock; `errIfDialog`.
