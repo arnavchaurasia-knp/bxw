@@ -31,7 +31,7 @@ Status legend: ⬜ not started · 🔄 in progress · ✅ done · ❌ blocked (w
 |---|---|---|---|---|---|---|---|
 | W1 | `cdp` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W2 | `goto` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| W3 | `wait` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| W3 | `wait` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W4 | `read` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | W5 | `hover` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | W6 | `drag` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -132,10 +132,10 @@ Import `github.com/chromedp/cdproto/page`, `github.com/chromedp/cdproto/cdp`, `c
 ---
 
 ## W3 — `wait` (wait for a condition)
-**Status:** ⬜ not started
+**Status:** ✅ done
 **Checklist**
-- [ ] daemon op · [ ] CLI · [ ] MCP · [ ] usage · [ ] test · [ ] committed
-- Evidence: _()_
+- [x] daemon op · [x] CLI · [x] MCP · [x] usage · [x] test · [x] committed
+- Evidence: _(verified via TestActionsLiveEndToEnd: setTimeout delayed inject satisfied in 300ms, wait verified: map[satisfied:true waitedMs:300])_
 
 **Implementation prompt:**
 1. In `nav.go` add `func (d *Daemon) wait(tabID string, cond waitCond, timeout time.Duration) (map[string]any, error)` where `cond` carries `selector`/`text`/`load`(bool)/`ms`(int).

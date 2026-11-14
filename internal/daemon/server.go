@@ -196,6 +196,30 @@ func (d *Daemon) dispatch(req Request) Response {
 		data, _ := json.Marshal(res)
 		return Response{Data: data}
 
+	case "wait":
+		tab, _ := req.Args["tab"].(string)
+		selector, _ := req.Args["selector"].(string)
+		text, _ := req.Args["text"].(string)
+		load, _ := req.Args["load"].(bool)
+		var ms int
+		if msVal, ok := req.Args["ms"].(float64); ok {
+			ms = int(msVal)
+		} else if msInt, ok := req.Args["ms"].(int); ok {
+			ms = msInt
+		}
+		cond := waitCond{
+			Selector: selector,
+			Text:     text,
+			Load:     load,
+			MS:       ms,
+		}
+		res, err := d.wait(tab, cond, timeout)
+		if err != nil {
+			return errorResponse(err)
+		}
+		data, _ := json.Marshal(res)
+		return Response{Data: data}
+
 	case "launch":
 		headless := false
 		realProfile := false

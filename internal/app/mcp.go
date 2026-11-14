@@ -175,6 +175,9 @@ func toolError(err error) map[string]any {
 }
 
 func str(desc string) map[string]any { return map[string]any{"type": "string", "description": desc} }
+func number(desc string) map[string]any {
+	return map[string]any{"type": "number", "description": desc}
+}
 func boolean(desc string) map[string]any {
 	return map[string]any{"type": "boolean", "description": desc}
 }
@@ -284,6 +287,53 @@ func mcpTools() []mcpTool {
 				var res daemon.ActResult
 				if err := json.Unmarshal(data, &res); err == nil {
 					return res.TerseSummary("goto"), nil
+				}
+				return string(data), nil
+			},
+		},
+		{
+			Name:        "wait",
+			Description: "Wait for a condition in a tab (DOM selector, text content, page load completion, or sleep ms).",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"tab":      str("Tab ID to wait on."),
+					"selector": str("Wait until element matching CSS selector or ref is present."),
+					"text":     str("Wait until text appears on page."),
+					"load":     boolean("Wait until document.readyState === 'complete'."),
+					"ms":       number("Sleep for specified milliseconds."),
+					"browser":  str("Browser name."),
+				},
+				"required": []string{"tab"},
+			},
+			run: func(args map[string]any) (string, error) {
+				bName, err := resolveBrowser(argString(args, "browser"))
+				if err != nil {
+					return "", err
+				}
+				load, _ := args["load"].(bool)
+				var ms int
+				if m, ok := args["ms"].(float64); ok {
+					ms = int(m)
+				}
+				waitArgs := map[string]any{
+					"tab": argString(args, "tab"),
+				}
+				if s := argString(args, "selector"); s != "" {
+					waitArgs["selector"] = s
+				}
+				if t := argString(args, "text"); t != "" {
+					waitArgs["text"] = t
+				}
+				if load {
+					waitArgs["load"] = true
+				}
+				if ms > 0 {
+					waitArgs["ms"] = ms
+				}
+				data, err := daemon.Call(bName, "wait", waitArgs)
+				if err != nil {
+					return "", err
 				}
 				return string(data), nil
 			},

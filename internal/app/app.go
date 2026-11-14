@@ -60,6 +60,8 @@ func Run(args []string) error {
 		return runOpen(args[1:])
 	case "goto":
 		return runGoto(args[1:])
+	case "wait":
+		return runWait(args[1:])
 	case "perms":
 		return runPerms(args[1:])
 	case "history":
@@ -96,6 +98,7 @@ usage:
   bxw list tabs [browser]             list open tabs of the bxw-managed instance
   bxw open <url> [--profile <name>]   open url in named profile window
   bxw goto <tab> <url>                navigate the current tab (vs open = new tab)
+  bxw wait <tab> [--selector s|--text t|--load|--ms N]   wait for a condition
   bxw setup <browser> [--revert]      enable/disable remote debugging on real profile
   bxw mcp [install [client]]          speak MCP over stdio or install into AI clients
   bxw snapshot <tab> [flags]          accessibility snapshot with stable element refs (e1, e2...)
@@ -887,6 +890,124 @@ func runGoto(args []string) error {
 		fmt.Println(res.TerseSummary("goto"))
 		return nil
 	}
+	fmt.Println(string(data))
+	return nil
+}
+
+func runWait(args []string) error {
+	var pos []string
+	var browserName string
+	var selector string
+	var text string
+	var load bool
+	var ms int
+	var timeoutStr string
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--browser":
+			if i+1 < len(args) {
+				browserName = args[i+1]
+				i++
+			}
+		case "--selector":
+			if i+1 < len(args) {
+				selector = args[i+1]
+				i++
+			}
+		case "--text":
+			if i+1 < len(args) {
+				text = args[i+1]
+				i++
+			}
+		case "--load":
+			load = true
+		case "--ms":
+			if i+1 < len(args) {
+				fmt.Sscanf(args[i+1], "%d", &ms)
+				i++
+			}
+		case "--timeout":
+			if i+1 < len(args) {
+				timeoutStr = args[i+1]
+				i++
+			}
+		default:
+			if strings.HasPrefix(args[i], "--browser=") {
+				browserName = strings.TrimPrefix(args[i], "--browser=")
+			} else if strings.HasPrefix(args[i], "--selector=") {
+				selector = strings.TrimPrefix(args[i], "--selector=")
+			} else if strings.HasPrefix(args[i], "--text=") {
+				text = strings.TrimPrefix(args[i], "--text=")
+			} else if strings.HasPrefix(args[i], "--ms=") {
+				fmt.Sscanf(strings.TrimPrefix(args[i], "--ms="), "%d", &ms)
+			} else if strings.HasPrefix(args[i], "--timeout=") {
+				timeoutStr = strings.TrimPrefix(args[i], "--timeout=")
+			} else if !strings.HasPrefix(args[i], "-") {
+				pos = append(pos, args[i])
+			}
+		}
+	}
+
+	if len(pos) < 1 {
+		return exit.New(exit.Usage, "usage: bxw wait <tab> [--selector s|--text t|--load|--ms N] [--timeout <dur>] [--browser <name>]")
+	}
+
+	tab := pos[0]
+
+	count := 0
+	if selector != "" {
+		count++
+	}
+	if text != "" {
+		count++
+	}
+	if load {
+		count++
+	}
+	if ms > 0 {
+		count++
+	}
+	if count != 1 {
+		return exit.New(exit.Usage, "exactly one of --selector, --text, --load, or --ms must be specified")
+	}
+
+	name, err := resolveBrowser(browserName)
+	if err != nil {
+		return err
+	}
+
+	var timeoutMs int
+	if timeoutStr != "" {
+		if dur, err := time.ParseDuration(timeoutStr); err == nil {
+			timeoutMs = int(dur.Milliseconds())
+		}
+	}
+
+	waitArgs := map[string]any{
+		"tab": tab,
+	}
+	if selector != "" {
+		waitArgs["selector"] = selector
+	}
+	if text != "" {
+		waitArgs["text"] = text
+	}
+	if load {
+		waitArgs["load"] = true
+	}
+	if ms > 0 {
+		waitArgs["ms"] = ms
+	}
+	if timeoutMs > 0 {
+		waitArgs["timeout_ms"] = timeoutMs
+	}
+
+	data, err := daemon.Call(name, "wait", waitArgs)
+	if err != nil {
+		return err
+	}
+
 	fmt.Println(string(data))
 	return nil
 }

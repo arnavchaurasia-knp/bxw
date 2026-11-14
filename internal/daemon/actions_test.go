@@ -66,6 +66,9 @@ func TestActionsLiveEndToEnd(t *testing.T) {
 	}
 	tabID := tabs[0].ID
 
+	// Wait for test server page to load completely before taking initial snapshot
+	_, _ = d.wait(tabID, waitCond{Load: true}, 5*time.Second)
+
 	// 3. Take snapshot
 	snap, err := d.snapshot(tabID, true, "", "", 15*time.Second)
 	if err != nil {
@@ -163,4 +166,33 @@ func TestActionsLiveEndToEnd(t *testing.T) {
 		t.Fatalf("unmarshal goto result %s: %v", string(gotoResp.Data), err)
 	}
 	t.Logf("goto summary: %s", gotoRes.TerseSummary("goto"))
+
+	// Test W3 wait dispatch (inject delayed element and wait for selector)
+	_ = d.dispatch(Request{
+		Op: "eval",
+		Args: map[string]any{
+			"tab":    tabID,
+			"script": `setTimeout(()=>{var el=document.createElement('div');el.id='delayed-el';el.innerText='Hello Late';document.body.appendChild(el);}, 250)`,
+		},
+	})
+
+	waitResp := d.dispatch(Request{
+		Op: "wait",
+		Args: map[string]any{
+			"tab":      tabID,
+			"selector": "#delayed-el",
+			"timeout":  "5s",
+		},
+	})
+	if waitResp.Error != "" {
+		t.Fatalf("dispatch wait error: %s", waitResp.Error)
+	}
+	var waitRes map[string]any
+	if err := json.Unmarshal(waitResp.Data, &waitRes); err != nil {
+		t.Fatalf("unmarshal wait result %s: %v", string(waitResp.Data), err)
+	}
+	if sat, ok := waitRes["satisfied"].(bool); !ok || !sat {
+		t.Fatalf("expected wait satisfied=true, got %v", waitRes)
+	}
+	t.Logf("wait verified: %+v", waitRes)
 }
