@@ -39,7 +39,7 @@ Status legend: ⬜ not started · 🔄 in progress · ✅ done · ❌ blocked (w
 | W8 | `dialog` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W9 | `close_tab` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W10 | `console` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| W11 | `network` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| W11 | `network` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W12 | `storage` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | W13 | `performance` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | W14 | `emulate` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -273,10 +273,10 @@ func (r *ringBuffer) list() []map[string]any { r.mu.Lock(); defer r.mu.Unlock();
 ---
 
 ## W11 — `network`
-**Status:** ⬜ not started — reuses W10's capture.
+**Status:** ✅ done
 **Checklist**
-- [ ] session subscriptions · [ ] daemon op · [ ] CLI · [ ] MCP · [ ] usage · [ ] test · [ ] committed
-- Evidence: _()_
+- [x] session subscriptions · [x] daemon op · [x] CLI · [x] MCP · [x] usage · [x] test · [x] committed
+- Evidence: _(verified via TestActionsLiveEndToEnd: fetch request captured in netBuf, network dispatch returned request list)_
 
 **Implementation prompt:**
 1. At session setup (same place as W10): `cdp.Call(ctx, tc, network.Enable, network.EnableParams{})` (import `github.com/chromedp/cdproto/network`). Goroutines over `cdp.Events(..., network.EventRequestWillBeSent)`, `...EventResponseReceived`, `...EventLoadingFinished`, `...EventLoadingFailed`. Keep a map of requestId → record `{id,method,url,status,type,ms,reqHeaders,respHeaders}` and mirror finished records into `netBuf`.

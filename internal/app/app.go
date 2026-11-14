@@ -76,6 +76,8 @@ func Run(args []string) error {
 		return runDialog(args[1:])
 	case "console":
 		return runConsole(args[1:])
+	case "network":
+		return runNetwork(args[1:])
 	case "perms":
 		return runPerms(args[1:])
 	case "history":
@@ -117,6 +119,7 @@ usage:
   bxw read <tab> [--ref e12] [--max 20000]   read the page's visible text
   bxw dialog <tab> <accept|dismiss> [--text t] respond to a JavaScript dialog
   bxw console <tab> [--level lvl] [--limit N]  tail page console and error logs
+  bxw network <tab> [--filter s] [--id reqID]  inspect captured network requests and responses
   bxw setup <browser> [--revert]      enable/disable remote debugging on real profile
   bxw mcp [install [client]]          speak MCP over stdio or install into AI clients
   bxw snapshot <tab> [flags]          accessibility snapshot with stable element refs (e1, e2...)
@@ -1437,6 +1440,115 @@ func runConsole(args []string) error {
 				loc = fmt.Sprintf("%s:%d", filepath.Base(url), int(line))
 			}
 			fmt.Fprintf(w, "%s\t%v\t%v\t%s\n", tStr, l["level"], l["text"], loc)
+		}
+		return w.Flush()
+	}
+
+	fmt.Println(string(data))
+	return nil
+}
+
+func runNetwork(args []string) error {
+	var pos []string
+	var browserName, filter, reqID string
+	var limit int
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--browser":
+			if i+1 < len(args) {
+				browserName = args[i+1]
+				i++
+			}
+		case "--filter":
+			if i+1 < len(args) {
+				filter = args[i+1]
+				i++
+			}
+		case "--id":
+			if i+1 < len(args) {
+				reqID = args[i+1]
+				i++
+			}
+		case "--limit":
+			if i+1 < len(args) {
+				fmt.Sscanf(args[i+1], "%d", &limit)
+				i++
+			}
+		default:
+			if strings.HasPrefix(args[i], "--browser=") {
+				browserName = strings.TrimPrefix(args[i], "--browser=")
+			} else if strings.HasPrefix(args[i], "--filter=") {
+				filter = strings.TrimPrefix(args[i], "--filter=")
+			} else if strings.HasPrefix(args[i], "--id=") {
+				reqID = strings.TrimPrefix(args[i], "--id=")
+			} else if strings.HasPrefix(args[i], "--limit=") {
+				fmt.Sscanf(strings.TrimPrefix(args[i], "--limit="), "%d", &limit)
+			} else if !strings.HasPrefix(args[i], "-") {
+				pos = append(pos, args[i])
+			}
+		}
+	}
+
+	if len(pos) < 1 {
+		return exit.New(exit.Usage, "usage: bxw network <tab> [--filter <substr>] [--id <reqID>] [--limit <n>] [--browser <name>]")
+	}
+
+	tab := pos[0]
+	name, err := resolveBrowser(browserName)
+	if err != nil {
+		return err
+	}
+
+	nArgs := map[string]any{"tab": tab}
+	if filter != "" {
+		nArgs["filter"] = filter
+	}
+	if reqID != "" {
+		nArgs["request_id"] = reqID
+	}
+	if limit > 0 {
+		nArgs["limit"] = limit
+	}
+
+	data, err := daemon.Call(name, "network", nArgs)
+	if err != nil {
+		return err
+	}
+
+	if reqID != "" {
+		var detail map[string]any
+		if err := json.Unmarshal(data, &detail); err == nil {
+			pretty, _ := json.MarshalIndent(detail, "", "  ")
+			fmt.Println(string(pretty))
+			return nil
+		}
+		fmt.Println(string(data))
+		return nil
+	}
+
+	var reqs []map[string]any
+	if err := json.Unmarshal(data, &reqs); err == nil {
+		if len(reqs) == 0 {
+			fmt.Println("(no network requests captured)")
+			return nil
+		}
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "ID\tMETHOD\tSTATUS\tTYPE\tDURATION\tURL")
+		for _, r := range reqs {
+			dur := "-"
+			if ms, ok := r["ms"].(float64); ok {
+				dur = fmt.Sprintf("%.0fms", ms)
+			}
+			status := "-"
+			if st, ok := r["status"].(float64); ok && st > 0 {
+				status = fmt.Sprintf("%.0f", st)
+			}
+			urlStr, _ := r["url"].(string)
+			if len(urlStr) > 60 {
+				urlStr = urlStr[:57] + "..."
+			}
+			fmt.Fprintf(w, "%v\t%v\t%s\t%v\t%s\t%s\n", r["id"], r["method"], status, r["type"], dur, urlStr)
 		}
 		return w.Flush()
 	}

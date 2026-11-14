@@ -447,6 +447,48 @@ func mcpTools() []mcpTool {
 			},
 		},
 		{
+			Name:        "network",
+			Description: "Inspect captured network requests and responses from a tab, or retrieve response body by request ID.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"tab":        str("Tab ID."),
+					"filter":     str("Optional substring filter on request URL."),
+					"request_id": str("Optional request ID to fetch response body and details."),
+					"limit":      number("Max entries to return (default 50)."),
+					"browser":    str("Browser name."),
+				},
+				"required": []string{"tab"},
+			},
+			run: func(args map[string]any) (string, error) {
+				bName, err := resolveBrowser(argString(args, "browser"))
+				if err != nil {
+					return "", err
+				}
+				var limit int
+				if l, ok := args["limit"].(float64); ok {
+					limit = int(l)
+				}
+				nArgs := map[string]any{
+					"tab": argString(args, "tab"),
+				}
+				if f := argString(args, "filter"); f != "" {
+					nArgs["filter"] = f
+				}
+				if id := argString(args, "request_id"); id != "" {
+					nArgs["request_id"] = id
+				}
+				if limit > 0 {
+					nArgs["limit"] = limit
+				}
+				data, err := daemon.Call(bName, "network", nArgs)
+				if err != nil {
+					return "", err
+				}
+				return string(data), nil
+			},
+		},
+		{
 			Name:        "snapshot",
 			Description: "Take an accessibility snapshot of a tab, returning an indented element tree with stable refs (e1, e2...). Returns diffs vs previous snapshot by default to save tokens.",
 			InputSchema: map[string]any{

@@ -404,4 +404,32 @@ func TestActionsLiveEndToEnd(t *testing.T) {
 		t.Fatalf("expected to find test error message in console logs, got: %+v", consoleLogs)
 	}
 	t.Logf("console verified: found error log in %d entries", len(consoleLogs))
+
+	// Test W11 network dispatch
+	_ = d.dispatch(Request{
+		Op: "eval",
+		Args: map[string]any{
+			"tab":    tabID,
+			"script": `fetch(window.location.href).then(r => r.text())`,
+		},
+	})
+	time.Sleep(200 * time.Millisecond)
+
+	netResp := d.dispatch(Request{
+		Op: "network",
+		Args: map[string]any{
+			"tab": tabID,
+		},
+	})
+	if netResp.Error != "" {
+		t.Fatalf("dispatch network error: %s", netResp.Error)
+	}
+	var netRequests []map[string]any
+	if err := json.Unmarshal(netResp.Data, &netRequests); err != nil {
+		t.Fatalf("unmarshal network list: %v", err)
+	}
+	if len(netRequests) == 0 {
+		t.Fatal("expected at least one captured network request")
+	}
+	t.Logf("network verified: captured %d requests", len(netRequests))
 }

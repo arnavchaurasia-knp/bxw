@@ -484,6 +484,23 @@ func (d *Daemon) dispatch(req Request) Response {
 		data, _ := json.Marshal(logs)
 		return Response{Data: data}
 
+	case "network":
+		tab, _ := req.Args["tab"].(string)
+		filter, _ := req.Args["filter"].(string)
+		requestID, _ := req.Args["request_id"].(string)
+		var limit int
+		if lVal, ok := req.Args["limit"].(float64); ok {
+			limit = int(lVal)
+		} else if lInt, ok := req.Args["limit"].(int); ok {
+			limit = lInt
+		}
+		res, err := d.network(tab, filter, requestID, limit)
+		if err != nil {
+			return errorResponse(err)
+		}
+		data, _ := json.Marshal(res)
+		return Response{Data: data}
+
 	case "cdp":
 		tab, _ := req.Args["tab"].(string)
 		method, _ := req.Args["method"].(string)
