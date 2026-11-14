@@ -214,19 +214,33 @@ func center(ctx context.Context, sess *tabSession, el string, timeout time.Durat
 	return xy[0], xy[1], nil
 }
 
+func moveMouse(ctx context.Context, sess *tabSession, el string, timeout time.Duration) (float64, float64, error) {
+	x, y, err := center(ctx, sess, el, timeout)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	_, err = cdp.Call(ctx, sess.conn, input.DispatchMouseEvent, input.DispatchMouseEventParams{
+		Type: input.DispatchMouseEventTypeMouseMoved,
+		X:    x,
+		Y:    y,
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+	return x, y, nil
+}
+
+func (d *Daemon) hover(tabID, el string, timeout time.Duration) (ActResult, error) {
+	return d.actOn(tabID, timeout, func(ctx context.Context, sess *tabSession) error {
+		_, _, err := moveMouse(ctx, sess, el, timeout)
+		return err
+	})
+}
+
 func (d *Daemon) click(tabID, el string, double bool, timeout time.Duration) (ActResult, error) {
 	return d.actOn(tabID, timeout, func(ctx context.Context, sess *tabSession) error {
-		x, y, err := center(ctx, sess, el, timeout)
-		if err != nil {
-			return err
-		}
-
-		// Mouse move
-		_, err = cdp.Call(ctx, sess.conn, input.DispatchMouseEvent, input.DispatchMouseEventParams{
-			Type: input.DispatchMouseEventTypeMouseMoved,
-			X:    x,
-			Y:    y,
-		})
+		x, y, err := moveMouse(ctx, sess, el, timeout)
 		if err != nil {
 			return err
 		}

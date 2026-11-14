@@ -482,6 +482,38 @@ func mcpTools() []mcpTool {
 			},
 		},
 		{
+			Name:        "hover",
+			Description: "Hover mouse over an element by ref (e.g. 'e12') or CSS selector.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"tab":     str("Tab ID."),
+					"element": str("Ref from latest snapshot (e.g. 'e12') or CSS selector."),
+					"browser": str("Browser name."),
+				},
+				"required": []string{"tab", "element"},
+			},
+			run: func(args map[string]any) (string, error) {
+				bName, err := resolveBrowser(argString(args, "browser"))
+				if err != nil {
+					return "", err
+				}
+				el := argString(args, "element")
+				data, err := daemon.Call(bName, "hover", map[string]any{
+					"tab":      argString(args, "tab"),
+					"selector": el,
+				})
+				if err != nil {
+					return "", err
+				}
+				var res daemon.ActResult
+				if err := json.Unmarshal(data, &res); err == nil {
+					return res.TerseSummary("hover " + el), nil
+				}
+				return string(data), nil
+			},
+		},
+		{
 			Name:        "fill",
 			Description: "Fill form elements (inputs, textareas, selects, checkboxes) by ref or selector.",
 			InputSchema: map[string]any{

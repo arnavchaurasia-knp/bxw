@@ -46,6 +46,8 @@ func Run(args []string) error {
 		return runScreenshot(args[1:])
 	case "click":
 		return runClick(args[1:])
+	case "hover":
+		return runHover(args[1:])
 	case "fill":
 		return runFill(args[1:])
 	case "type":
@@ -109,6 +111,7 @@ usage:
   bxw screenshot <tab> [flags]        capture viewport PNG, saving to cache (prints bxw://cache link)
                                       flags: --out <file>
   bxw click <tab> <ref|sel> [--double] click an element by ref or CSS selector
+  bxw hover <tab> <ref|sel>           hover over an element by ref or CSS selector
   bxw fill <tab> <ref|sel> <val>...   fill form inputs, selects, or toggles
   bxw type <tab> <text> [--submit <k>] type text into active element
   bxw key <tab> <combo>               press key or combination (e.g. Enter, Control+A)
@@ -508,6 +511,55 @@ func runClick(args []string) error {
 	if res.Navigated {
 		fmt.Printf("navigated to %s (%s)\n", res.URL, res.Title)
 	}
+	return nil
+}
+
+func runHover(args []string) error {
+	var pos []string
+	var browserName string
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--browser":
+			if i+1 < len(args) {
+				browserName = args[i+1]
+				i++
+			}
+		default:
+			if strings.HasPrefix(args[i], "--browser=") {
+				browserName = strings.TrimPrefix(args[i], "--browser=")
+			} else if !strings.HasPrefix(args[i], "-") {
+				pos = append(pos, args[i])
+			}
+		}
+	}
+
+	if len(pos) < 2 {
+		return exit.New(exit.Usage, "usage: bxw hover <tab> <ref|sel> [--browser <name>]")
+	}
+
+	tab := pos[0]
+	el := pos[1]
+
+	name, err := resolveBrowser(browserName)
+	if err != nil {
+		return err
+	}
+
+	data, err := daemon.Call(name, "hover", map[string]any{
+		"tab":      tab,
+		"selector": el,
+	})
+	if err != nil {
+		return err
+	}
+
+	var res daemon.ActResult
+	if err := json.Unmarshal(data, &res); err == nil {
+		fmt.Println(res.TerseSummary("hover " + el))
+		return nil
+	}
+	fmt.Printf("hover %s -> done\n", el)
 	return nil
 }
 

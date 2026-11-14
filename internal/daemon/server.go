@@ -299,6 +299,16 @@ func (d *Daemon) dispatch(req Request) Response {
 		data, _ := json.Marshal(res)
 		return Response{Data: data}
 
+	case "hover":
+		tab, _ := req.Args["tab"].(string)
+		sel, _ := req.Args["selector"].(string)
+		res, err := d.hover(tab, sel, timeout)
+		if err != nil {
+			return errorResponse(err)
+		}
+		data, _ := json.Marshal(res)
+		return Response{Data: data}
+
 	case "fill":
 		tab, _ := req.Args["tab"].(string)
 		var pairs [][2]string

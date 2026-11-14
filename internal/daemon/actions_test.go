@@ -216,4 +216,21 @@ func TestActionsLiveEndToEnd(t *testing.T) {
 		t.Fatalf("expected read text to contain 'Hello Late', got: %q", readRes.Text)
 	}
 	t.Logf("read verified: %q", readRes.Text)
+
+	// Test W5 hover dispatch
+	hoverResp := d.dispatch(Request{
+		Op: "hover",
+		Args: map[string]any{
+			"tab":      tabID,
+			"selector": "#submit",
+		},
+	})
+	if hoverResp.Error != "" {
+		t.Fatalf("dispatch hover error: %s", hoverResp.Error)
+	}
+	var hoverRes ActResult
+	if err := json.Unmarshal(hoverResp.Data, &hoverRes); err != nil {
+		t.Fatalf("unmarshal hover result %s: %v", string(hoverResp.Data), err)
+	}
+	t.Logf("hover verified: %s", hoverRes.TerseSummary("hover #submit"))
 }

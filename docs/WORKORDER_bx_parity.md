@@ -33,7 +33,7 @@ Status legend: ⬜ not started · 🔄 in progress · ✅ done · ❌ blocked (w
 | W2 | `goto` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W3 | `wait` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W4 | `read` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| W5 | `hover` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| W5 | `hover` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W6 | `drag` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | W7 | `upload` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | W8 | `dialog` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -172,10 +172,10 @@ Import `github.com/chromedp/cdproto/page`, `github.com/chromedp/cdproto/cdp`, `c
 ---
 
 ## W5 — `hover`
-**Status:** ⬜ not started
+**Status:** ✅ done
 **Checklist**
-- [ ] daemon op · [ ] CLI · [ ] MCP · [ ] usage · [ ] test · [ ] committed
-- Evidence: _()_
+- [x] daemon op · [x] CLI · [x] MCP · [x] usage · [x] test · [x] committed
+- Evidence: _(verified via TestActionsLiveEndToEnd: hover on #submit verified with moveMouse dispatches)_
 
 **Implementation prompt:**
 1. In `actions.go`, extract the "mouse move to element" step from `click` into a helper `func moveMouse(ctx, sess, el string, timeout) error` that does `center(...)` + one `input.DispatchMouseEvent{Type: MouseMoved, X,Y}`. Refactor `click` to call it (no behaviour change).
