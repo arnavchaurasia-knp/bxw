@@ -54,6 +54,8 @@ func Run(args []string) error {
 		return runKey(args[1:])
 	case "eval":
 		return runEval(args[1:])
+	case "cdp":
+		return runCDP(args[1:])
 	case "open":
 		return runOpen(args[1:])
 	case "perms":
@@ -102,6 +104,7 @@ usage:
   bxw type <tab> <text> [--submit <k>] type text into active element
   bxw key <tab> <combo>               press key or combination (e.g. Enter, Control+A)
   bxw eval <tab> <expr>               evaluate JavaScript on the tab
+  bxw cdp <tab> <Domain.method> [--params <json>]   send any DevTools command
   bxw perms [list|grant|revoke]       inspect and manage capability permissions
   bxw history [browser] [flags]       query navigation history (--since, --grep, --profile)
   bxw context [browser] [--session id] view session context summary
@@ -707,6 +710,64 @@ func runEval(args []string) error {
 	data, err := daemon.Call(name, "eval", map[string]any{
 		"tab":    pos[0],
 		"script": script,
+	})
+	if err != nil {
+		return err
+	}
+
+	var formatted any
+	if err := json.Unmarshal(data, &formatted); err == nil {
+		pretty, _ := json.MarshalIndent(formatted, "", "  ")
+		fmt.Println(string(pretty))
+	} else {
+		fmt.Println(string(data))
+	}
+	return nil
+}
+
+func runCDP(args []string) error {
+	var pos []string
+	var browserName, paramsStr string
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--browser":
+			if i+1 < len(args) {
+				browserName = args[i+1]
+				i++
+			}
+		case "--params":
+			if i+1 < len(args) {
+				paramsStr = args[i+1]
+				i++
+			}
+		default:
+			if strings.HasPrefix(args[i], "--browser=") {
+				browserName = strings.TrimPrefix(args[i], "--browser=")
+			} else if strings.HasPrefix(args[i], "--params=") {
+				paramsStr = strings.TrimPrefix(args[i], "--params=")
+			} else if !strings.HasPrefix(args[i], "-") {
+				pos = append(pos, args[i])
+			}
+		}
+	}
+
+	if len(pos) < 2 {
+		return exit.New(exit.Usage, "usage: bxw cdp <tab> <Domain.method> [--params <json>]")
+	}
+
+	tab := pos[0]
+	method := pos[1]
+
+	name, err := resolveBrowser(browserName)
+	if err != nil {
+		return err
+	}
+
+	data, err := daemon.Call(name, "cdp", map[string]any{
+		"tab":    tab,
+		"method": method,
+		"params": paramsStr,
 	})
 	if err != nil {
 		return err

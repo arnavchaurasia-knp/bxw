@@ -306,6 +306,51 @@ func (d *Daemon) dispatch(req Request) Response {
 		}
 		return Response{Data: pngBytes}
 
+	case "cdp":
+		tab, _ := req.Args["tab"].(string)
+		method, _ := req.Args["method"].(string)
+		paramsStr, _ := req.Args["params"].(string)
+		if method == "" {
+			return errorResponse(exit.New(exit.Validation, "cdp requires method"))
+		}
+
+		var p any
+		if paramsStr != "" {
+			if err := json.Unmarshal([]byte(paramsStr), &p); err != nil {
+				return errorResponse(exit.New(exit.Validation, "bad params json: %v", err))
+			}
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+
+		var raw json.RawMessage
+		if tab != "" {
+			sess, err := d.tabSession(tab)
+			if err != nil {
+				return errorResponse(err)
+			}
+			sess.mu.Lock()
+			defer sess.mu.Unlock()
+			if err := sess.conn.Call(ctx, method, p, &raw); err != nil {
+				return errorResponse(exit.New(exit.Upstream, "%s: %v", method, err))
+			}
+		} else {
+			bconn, err := d.browserConn(ctx)
+			if err != nil {
+				return errorResponse(err)
+			}
+			defer bconn.Close()
+			if err := bconn.Call(ctx, method, p, &raw); err != nil {
+				return errorResponse(exit.New(exit.Upstream, "%s: %v", method, err))
+			}
+		}
+
+		if len(raw) == 0 {
+			raw = []byte("{}")
+		}
+		return Response{Data: []byte(raw)}
+
 	case "stop":
 		select {
 		case <-d.stop:

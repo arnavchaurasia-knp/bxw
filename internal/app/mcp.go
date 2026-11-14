@@ -481,5 +481,34 @@ func mcpTools() []mcpTool {
 				return string(data), nil
 			},
 		},
+		{
+			Name:        "cdp",
+			Description: "Send any raw DevTools Protocol (CDP) command to a tab or browser target.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"tab":     str("Optional Tab ID (omit for browser-level methods)."),
+					"method":  str("DevTools command method (e.g. 'Runtime.evaluate', 'Page.reload')."),
+					"params":  str("JSON object string containing command parameters."),
+					"browser": str("Browser name."),
+				},
+				"required": []string{"method"},
+			},
+			run: func(args map[string]any) (string, error) {
+				bName, err := resolveBrowser(argString(args, "browser"))
+				if err != nil {
+					return "", err
+				}
+				data, err := daemon.Call(bName, "cdp", map[string]any{
+					"tab":    argString(args, "tab"),
+					"method": argString(args, "method"),
+					"params": argString(args, "params"),
+				})
+				if err != nil {
+					return "", err
+				}
+				return string(data), nil
+			},
+		},
 	}
 }

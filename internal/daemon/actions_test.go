@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -119,4 +120,30 @@ func TestActionsLiveEndToEnd(t *testing.T) {
 		t.Fatalf("expected 'Submitted: Alice', got %q", resultText)
 	}
 	t.Logf("Success! Live browser action verified. Result: %s", resultText)
+
+	// 7. Test generic CDP dispatch (W1)
+	resp := d.dispatch(Request{
+		Op: "cdp",
+		Args: map[string]any{
+			"tab":    tabID,
+			"method": "Runtime.evaluate",
+			"params": `{"expression":"1+1","returnByValue":true}`,
+		},
+	})
+	if resp.Error != "" {
+		t.Fatalf("dispatch cdp error: %s", resp.Error)
+	}
+	var evalOut struct {
+		Result struct {
+			Type  string `json:"type"`
+			Value int    `json:"value"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(resp.Data, &evalOut); err != nil {
+		t.Fatalf("unmarshal cdp response %s: %v", string(resp.Data), err)
+	}
+	if evalOut.Result.Value != 2 {
+		t.Fatalf("expected cdp eval result 2, got %v", evalOut.Result.Value)
+	}
+	t.Logf("CDP dispatch verified: %s", string(resp.Data))
 }
