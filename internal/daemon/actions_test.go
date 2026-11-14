@@ -481,4 +481,46 @@ func TestActionsLiveEndToEnd(t *testing.T) {
 		t.Fatalf("expected dom_size in performance data, got: %+v", perfData)
 	}
 	t.Logf("performance verified: dom_size=%v, ttfb=%v", perfData["dom_size"], perfData["ttfb"])
+
+	// Test W14 emulate dispatch
+	emulateResp := d.dispatch(Request{
+		Op: "emulate",
+		Args: map[string]any{
+			"tab":    tabID,
+			"device": "mobile",
+			"media":  "dark",
+		},
+	})
+	if emulateResp.Error != "" {
+		t.Fatalf("dispatch emulate error: %s", emulateResp.Error)
+	}
+	// Check window.outerWidth or screen.width is 390
+	var outerWidth float64
+	wResp := d.dispatch(Request{
+		Op: "eval",
+		Args: map[string]any{
+			"tab":    tabID,
+			"script": "window.outerWidth",
+		},
+	})
+	if wResp.Error != "" {
+		t.Fatalf("eval outerWidth error: %s", wResp.Error)
+	}
+	_ = json.Unmarshal(wResp.Data, &outerWidth)
+	if outerWidth != 390 {
+		t.Fatalf("expected outerWidth 390 after mobile emulation, got: %v", outerWidth)
+	}
+	// Reset emulation
+	resetResp := d.dispatch(Request{
+		Op: "emulate",
+		Args: map[string]any{
+			"tab":    tabID,
+			"device": "reset",
+			"media":  "reset",
+		},
+	})
+	if resetResp.Error != "" {
+		t.Fatalf("dispatch reset emulate error: %s", resetResp.Error)
+	}
+	t.Logf("emulate verified: mobile innerWidth=390, reset success")
 }

@@ -519,6 +519,32 @@ func (d *Daemon) dispatch(req Request) Response {
 		data, _ := json.Marshal(res)
 		return Response{Data: data}
 
+	case "emulate":
+		tab, _ := req.Args["tab"].(string)
+		device, _ := req.Args["device"].(string)
+		netCond, _ := req.Args["network"].(string)
+		var cpu float64
+		if cVal, ok := req.Args["cpu"].(float64); ok {
+			cpu = cVal
+		} else if cInt, ok := req.Args["cpu"].(int); ok {
+			cpu = float64(cInt)
+		}
+		geo, _ := req.Args["geo"].(string)
+		media, _ := req.Args["media"].(string)
+
+		opts := emulateOpts{
+			Device:  device,
+			Network: netCond,
+			CPU:     cpu,
+			Geo:     geo,
+			Media:   media,
+		}
+		if err := d.emulate(tab, opts, timeout); err != nil {
+			return errorResponse(err)
+		}
+		data, _ := json.Marshal(map[string]any{"emulated": true})
+		return Response{Data: data}
+
 	case "cdp":
 		tab, _ := req.Args["tab"].(string)
 		method, _ := req.Args["method"].(string)

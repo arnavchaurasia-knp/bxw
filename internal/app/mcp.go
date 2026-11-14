@@ -937,5 +937,51 @@ func mcpTools() []mcpTool {
 				return string(data), nil
 			},
 		},
+		{
+			Name:        "emulate",
+			Description: "Emulate device metrics, network conditions, CPU throttling, geolocation, or color scheme.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"tab":     str("Tab ID."),
+					"device":  str("Device emulation ('mobile', 'desktop', 'reset')."),
+					"network": str("Network conditions ('offline', 'slow3g', 'online', 'reset')."),
+					"cpu":     number("CPU throttling rate (e.g. 2 for 2x slowdown, 1 for reset)."),
+					"geo":     str("Geolocation coordinates ('lat,lng' e.g. '37.7749,-122.4194' or 'reset')."),
+					"media":   str("Color scheme preference ('dark', 'light', 'reset')."),
+					"browser": str("Browser name."),
+				},
+				"required": []string{"tab"},
+			},
+			run: func(args map[string]any) (string, error) {
+				bName, err := resolveBrowser(argString(args, "browser"))
+				if err != nil {
+					return "", err
+				}
+				callArgs := map[string]any{
+					"tab": argString(args, "tab"),
+				}
+				if d := argString(args, "device"); d != "" {
+					callArgs["device"] = d
+				}
+				if n := argString(args, "network"); n != "" {
+					callArgs["network"] = n
+				}
+				if c, ok := args["cpu"].(float64); ok && c > 0 {
+					callArgs["cpu"] = c
+				}
+				if g := argString(args, "geo"); g != "" {
+					callArgs["geo"] = g
+				}
+				if m := argString(args, "media"); m != "" {
+					callArgs["media"] = m
+				}
+				data, err := daemon.Call(bName, "emulate", callArgs)
+				if err != nil {
+					return "", err
+				}
+				return string(data), nil
+			},
+		},
 	}
 }

@@ -42,7 +42,7 @@ Status legend: ⬜ not started · 🔄 in progress · ✅ done · ❌ blocked (w
 | W11 | `network` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W12 | `storage` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W13 | `performance` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| W14 | `emulate` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| W14 | `emulate` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W15 | MCP parity (`doctor`,`setup`,`launch`,`list_profiles`) | n/a | n/a | ⬜ | ⬜ | ⬜ | ⬜ |
 | W16 | follow mode | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | W-FINAL | parity verification | n/a | n/a | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -327,10 +327,10 @@ func (r *ringBuffer) list() []map[string]any { r.mu.Lock(); defer r.mu.Unlock();
 ---
 
 ## W14 — `emulate`
-**Status:** ⬜ not started
+**Status:** ✅ done
 **Checklist**
-- [ ] daemon op · [ ] CLI · [ ] MCP · [ ] usage · [ ] test · [ ] committed
-- Evidence: _()_
+- [x] daemon op · [x] CLI · [x] MCP · [x] usage · [x] test · [x] committed
+- Evidence: _(verified via TestActionsLiveEndToEnd: mobile device emulation window.outerWidth=390, reset success)_
 
 **Implementation prompt:**
 1. `debug.go`: `func (d *Daemon) emulate(tabID string, opts emulateOpts, timeout) error`. Apply only the fields set; `reset` clears. Map each:

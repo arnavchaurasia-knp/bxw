@@ -3,11 +3,13 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/chromedp/cdproto/cdp"
+	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/cdproto/log"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/runtime"
@@ -430,4 +432,145 @@ func (d *Daemon) performance(tabID string, timeout time.Duration) (map[string]an
 		return nil, err
 	}
 	return res, nil
+}
+
+type emulateOpts struct {
+	Device  string
+	Network string
+	CPU     float64
+	Geo     string
+	Media   string
+}
+
+func (d *Daemon) emulate(tabID string, opts emulateOpts, timeout time.Duration) error {
+	sess, err := d.tabSession(tabID)
+	if err != nil {
+		return err
+	}
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	// 1. Device metrics
+	switch strings.ToLower(opts.Device) {
+	case "mobile":
+		if _, err := cdp.Call(ctx, sess.conn, emulation.SetDeviceMetricsOverride, emulation.SetDeviceMetricsOverrideParams{
+			Width:             390,
+			Height:            844,
+			DeviceScaleFactor: 3,
+			Mobile:            true,
+		}); err != nil {
+			return exit.New(exit.Upstream, "set mobile emulation: %v", err)
+		}
+	case "desktop", "reset":
+		if _, err := cdp.Call(ctx, sess.conn, emulation.ClearDeviceMetricsOverride, cdp.Empty{}); err != nil {
+			return exit.New(exit.Upstream, "clear device emulation: %v", err)
+		}
+	}
+
+	// 2. Network conditions
+	switch strings.ToLower(opts.Network) {
+	case "offline":
+		if _, err := cdp.Call(ctx, sess.conn, network.EmulateNetworkConditionsByRule, network.EmulateNetworkConditionsByRuleParams{
+			MatchedNetworkConditions: []*network.Conditions{
+				{Offline: true},
+			},
+		}); err != nil {
+			return exit.New(exit.Upstream, "set offline: %v", err)
+		}
+	case "slow3g":
+		if _, err := cdp.Call(ctx, sess.conn, network.EmulateNetworkConditionsByRule, network.EmulateNetworkConditionsByRuleParams{
+			MatchedNetworkConditions: []*network.Conditions{
+				{
+					Offline:            false,
+					Latency:            400,
+					DownloadThroughput: 400 * 1024 / 8,
+					UploadThroughput:   400 * 1024 / 8,
+				},
+			},
+		}); err != nil {
+			return exit.New(exit.Upstream, "set slow3g: %v", err)
+		}
+	case "online", "reset":
+		if _, err := cdp.Call(ctx, sess.conn, network.EmulateNetworkConditionsByRule, network.EmulateNetworkConditionsByRuleParams{
+			MatchedNetworkConditions: []*network.Conditions{
+				{
+					Offline:            false,
+					Latency:            0,
+					DownloadThroughput: -1,
+					UploadThroughput:   -1,
+				},
+			},
+		}); err != nil {
+			return exit.New(exit.Upstream, "reset network emulation: %v", err)
+		}
+	}
+
+	// 3. CPU throttling
+	if opts.CPU > 0 {
+		rate := opts.CPU
+		if opts.CPU == 1 {
+			rate = 1
+		}
+		if _, err := cdp.Call(ctx, sess.conn, emulation.SetCPUThrottlingRate, emulation.SetCPUThrottlingRateParams{
+			Rate: rate,
+		}); err != nil {
+			return exit.New(exit.Upstream, "set cpu throttling: %v", err)
+		}
+	}
+
+	// 4. Geolocation
+	if opts.Geo != "" {
+		if strings.ToLower(opts.Geo) == "reset" {
+			if _, err := cdp.Call(ctx, sess.conn, emulation.ClearGeolocationOverride, cdp.Empty{}); err != nil {
+				return exit.New(exit.Upstream, "clear geolocation: %v", err)
+			}
+		} else {
+			var lat, lng float64
+			n, _ := fmt.Sscanf(opts.Geo, "%f,%f", &lat, &lng)
+			if n == 2 {
+				acc := 1.0
+				if _, err := cdp.Call(ctx, sess.conn, emulation.SetGeolocationOverride, emulation.SetGeolocationOverrideParams{
+					Latitude:  &lat,
+					Longitude: &lng,
+					Accuracy:  &acc,
+				}); err != nil {
+					return exit.New(exit.Upstream, "set geolocation: %v", err)
+				}
+			}
+		}
+	}
+
+	// 5. Emulated media
+	switch strings.ToLower(opts.Media) {
+	case "dark":
+		if _, err := cdp.Call(ctx, sess.conn, emulation.SetEmulatedMedia, emulation.SetEmulatedMediaParams{
+			Features: []*emulation.MediaFeature{
+				{Name: "prefers-color-scheme", Value: "dark"},
+			},
+		}); err != nil {
+			return exit.New(exit.Upstream, "set dark mode: %v", err)
+		}
+	case "light":
+		if _, err := cdp.Call(ctx, sess.conn, emulation.SetEmulatedMedia, emulation.SetEmulatedMediaParams{
+			Features: []*emulation.MediaFeature{
+				{Name: "prefers-color-scheme", Value: "light"},
+			},
+		}); err != nil {
+			return exit.New(exit.Upstream, "set light mode: %v", err)
+		}
+	case "reset":
+		if _, err := cdp.Call(ctx, sess.conn, emulation.SetEmulatedMedia, emulation.SetEmulatedMediaParams{
+			Features: []*emulation.MediaFeature{},
+		}); err != nil {
+			return exit.New(exit.Upstream, "reset media emulation: %v", err)
+		}
+	}
+
+	return nil
 }

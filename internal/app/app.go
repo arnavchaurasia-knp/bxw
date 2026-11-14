@@ -82,6 +82,8 @@ func Run(args []string) error {
 		return runStorage(args[1:])
 	case "performance":
 		return runPerformance(args[1:])
+	case "emulate":
+		return runEmulate(args[1:])
 	case "perms":
 		return runPerms(args[1:])
 	case "history":
@@ -126,6 +128,8 @@ usage:
   bxw network <tab> [--filter s] [--id reqID]  inspect captured network requests and responses
   bxw storage <tab>                           inspect cookies, localStorage and sessionStorage
   bxw performance <tab>                       audit Core Web Vitals (LCP, FCP, CLS, TTFB, memory)
+  bxw emulate <tab> [flags]                   emulate mobile/desktop, network, cpu, geo, dark mode
+                                              flags: --device, --network, --cpu, --geo, --media
   bxw setup <browser> [--revert]      enable/disable remote debugging on real profile
   bxw mcp [install [client]]          speak MCP over stdio or install into AI clients
   bxw snapshot <tab> [flags]          accessibility snapshot with stable element refs (e1, e2...)
@@ -1652,6 +1656,99 @@ func runPerformance(args []string) error {
 	}
 
 	fmt.Println(string(data))
+	return nil
+}
+
+func runEmulate(args []string) error {
+	var pos []string
+	var browserName, device, netCond, geo, media string
+	var cpu float64
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--browser":
+			if i+1 < len(args) {
+				browserName = args[i+1]
+				i++
+			}
+		case "--device":
+			if i+1 < len(args) {
+				device = args[i+1]
+				i++
+			}
+		case "--network":
+			if i+1 < len(args) {
+				netCond = args[i+1]
+				i++
+			}
+		case "--cpu":
+			if i+1 < len(args) {
+				fmt.Sscanf(args[i+1], "%f", &cpu)
+				i++
+			}
+		case "--geo":
+			if i+1 < len(args) {
+				geo = args[i+1]
+				i++
+			}
+		case "--media":
+			if i+1 < len(args) {
+				media = args[i+1]
+				i++
+			}
+		default:
+			if strings.HasPrefix(args[i], "--browser=") {
+				browserName = strings.TrimPrefix(args[i], "--browser=")
+			} else if strings.HasPrefix(args[i], "--device=") {
+				device = strings.TrimPrefix(args[i], "--device=")
+			} else if strings.HasPrefix(args[i], "--network=") {
+				netCond = strings.TrimPrefix(args[i], "--network=")
+			} else if strings.HasPrefix(args[i], "--cpu=") {
+				fmt.Sscanf(strings.TrimPrefix(args[i], "--cpu="), "%f", &cpu)
+			} else if strings.HasPrefix(args[i], "--geo=") {
+				geo = strings.TrimPrefix(args[i], "--geo=")
+			} else if strings.HasPrefix(args[i], "--media=") {
+				media = strings.TrimPrefix(args[i], "--media=")
+			} else if !strings.HasPrefix(args[i], "-") {
+				pos = append(pos, args[i])
+			}
+		}
+	}
+
+	if len(pos) < 1 {
+		return exit.New(exit.Usage, "usage: bxw emulate <tab> [--device <mobile|desktop|reset>] [--network <offline|slow3g|online|reset>] [--cpu <N>] [--geo <lat,lng|reset>] [--media <dark|light|reset>]")
+	}
+
+	tab := pos[0]
+	name, err := resolveBrowser(browserName)
+	if err != nil {
+		return err
+	}
+
+	callArgs := map[string]any{
+		"tab": tab,
+	}
+	if device != "" {
+		callArgs["device"] = device
+	}
+	if netCond != "" {
+		callArgs["network"] = netCond
+	}
+	if cpu > 0 {
+		callArgs["cpu"] = cpu
+	}
+	if geo != "" {
+		callArgs["geo"] = geo
+	}
+	if media != "" {
+		callArgs["media"] = media
+	}
+
+	if _, err := daemon.Call(name, "emulate", callArgs); err != nil {
+		return err
+	}
+
+	fmt.Println("Emulation settings applied successfully.")
 	return nil
 }
 
