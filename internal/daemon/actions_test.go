@@ -462,4 +462,23 @@ func TestActionsLiveEndToEnd(t *testing.T) {
 		t.Fatalf("expected localStorage['bxw_test_key'] == 'bxw_test_val', got: %v", storageData.Local)
 	}
 	t.Logf("storage verified: local keys=%d, cookies=%d", len(storageData.Local), len(storageData.Cookies))
+
+	// Test W13 performance dispatch
+	perfResp := d.dispatch(Request{
+		Op: "performance",
+		Args: map[string]any{
+			"tab": tabID,
+		},
+	})
+	if perfResp.Error != "" {
+		t.Fatalf("dispatch performance error: %s", perfResp.Error)
+	}
+	var perfData map[string]any
+	if err := json.Unmarshal(perfResp.Data, &perfData); err != nil {
+		t.Fatalf("unmarshal performance data: %v", err)
+	}
+	if _, ok := perfData["dom_size"]; !ok {
+		t.Fatalf("expected dom_size in performance data, got: %+v", perfData)
+	}
+	t.Logf("performance verified: dom_size=%v, ttfb=%v", perfData["dom_size"], perfData["ttfb"])
 }

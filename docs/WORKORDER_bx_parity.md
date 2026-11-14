@@ -41,7 +41,7 @@ Status legend: ⬜ not started · 🔄 in progress · ✅ done · ❌ blocked (w
 | W10 | `console` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W11 | `network` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W12 | `storage` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| W13 | `performance` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| W13 | `performance` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | W14 | `emulate` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | W15 | MCP parity (`doctor`,`setup`,`launch`,`list_profiles`) | n/a | n/a | ⬜ | ⬜ | ⬜ | ⬜ |
 | W16 | follow mode | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -307,10 +307,10 @@ func (r *ringBuffer) list() []map[string]any { r.mu.Lock(); defer r.mu.Unlock();
 ---
 
 ## W13 — `performance`
-**Status:** ⬜ not started
+**Status:** ✅ done
 **Checklist**
-- [ ] daemon op · [ ] CLI · [ ] MCP · [ ] usage · [ ] test · [ ] committed
-- Evidence: _()_
+- [x] daemon op · [x] CLI · [x] MCP · [x] usage · [x] test · [x] committed
+- Evidence: _(verified via TestActionsLiveEndToEnd: returned Web Vitals metrics, ratings, longtasks, resources, dom_size)_
 
 **Implementation prompt:**
 1. `debug.go`: `func (d *Daemon) performance(tabID string, timeout) (map[string]any, error)`. One `sess.eval` returning a JSON blob built in-page from the Performance API:

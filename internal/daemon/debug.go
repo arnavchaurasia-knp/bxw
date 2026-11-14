@@ -358,3 +358,76 @@ func (d *Daemon) storage(tabID string, timeout time.Duration) (map[string]any, e
 		"session": webStorage.Session,
 	}, nil
 }
+
+func (d *Daemon) performance(tabID string, timeout time.Duration) (map[string]any, error) {
+	sess, err := d.tabSession(tabID)
+	if err != nil {
+		return nil, err
+	}
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	const perfScript = `(() => {
+		const nav = performance.getEntriesByType('navigation')[0] || {};
+		const ttfb = nav.responseStart || 0;
+
+		const paints = performance.getEntriesByType('paint');
+		const fcpEntry = paints.find(p => p.name === 'first-contentful-paint');
+		const fcp = fcpEntry ? fcpEntry.startTime : 0;
+
+		const lcps = performance.getEntriesByType('largest-contentful-paint');
+		const lcp = lcps.length > 0 ? lcps[lcps.length - 1].startTime : 0;
+
+		const shifts = performance.getEntriesByType('layout-shift') || [];
+		let cls = 0;
+		for (const s of shifts) {
+			if (!s.hadRecentInput) {
+				cls += s.value;
+			}
+		}
+
+		const longtasks = (performance.getEntriesByType('longtask') || []).map(lt => ({
+			name: lt.name,
+			duration: lt.duration,
+			startTime: lt.startTime,
+		}));
+
+		const resources = (performance.getEntriesByType('resource') || [])
+			.map(r => ({ name: r.name, duration: r.duration, type: r.initiatorType, size: r.transferSize || 0 }))
+			.sort((a, b) => b.duration - a.duration)
+			.slice(0, 5);
+
+		const domSize = document.getElementsByTagName('*').length;
+		const usedHeap = performance.memory ? performance.memory.usedJSHeapSize : 0;
+
+		// Ratings per web.dev Core Web Vitals guidance:
+		// LCP: good <= 2500ms, poor > 4000ms
+		// FCP: good <= 1800ms, poor > 3000ms
+		// CLS: good <= 0.1, poor > 0.25
+		// TTFB: good <= 800ms, poor > 1800ms
+		const rate = (val, good, poor) => val <= good ? "good" : (val <= poor ? "needs-improvement" : "poor");
+
+		return {
+			ttfb: { value: ttfb, rating: rate(ttfb, 800, 1800) },
+			fcp: { value: fcp, rating: rate(fcp, 1800, 3000) },
+			lcp: { value: lcp, rating: rate(lcp, 2500, 4000) },
+			cls: { value: cls, rating: rate(cls, 0.1, 0.25) },
+			longtasks: longtasks,
+			slowest_resources: resources,
+			dom_size: domSize,
+			used_heap_bytes: usedHeap,
+		};
+	})()`
+
+	var res map[string]any
+	if err := sess.eval(ctx, perfScript, &res); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
