@@ -10,6 +10,20 @@ Design from public standards and observable behaviour only. **Do NOT read, decom
 
 ---
 
+> ## ▶ AGY — START HERE
+> - **F1 is already done** (commit `feat(context): F1 …`, dashboard ✅, CI green). **Begin at F2.**
+> - Work the dashboard **top to bottom**, respecting the build order. **One task at a time (WIP = 1).**
+> - **Every session: run the ANTI-DRIFT PROTOCOL below first** — re-derive truth from `git log` + `go test`
+>   + `bash scripts/verify-roadmap.sh`. If the dashboard disagrees with git/tests, **git/tests win** — fix the
+>   dashboard before coding.
+> - A row is ✅ **only** with a commit whose message carries the feature ID (`feat(<scope>): F2 …`), a test
+>   named with the ID (`func TestF2…`), real `go test` output pasted into its Evidence line, and a clean tree.
+>   `scripts/verify-roadmap.sh` is wired into CI — **a false ✅ turns the build red.** Do not report a task done
+>   until that script passes.
+> - F2 already has an adopted design (flow's two-store split + append-only dated notes + close-out). See F2 below.
+
+---
+
 # ════════ HOW TO USE THIS FILE (implementation model, read first) ════════
 1. Work **phase by phase, top to bottom**. Within a phase, respect the stated dependencies.
 2. Set a task **Status** to 🔄 when started, ✅ only when its checklist is all ticked **and its tests
