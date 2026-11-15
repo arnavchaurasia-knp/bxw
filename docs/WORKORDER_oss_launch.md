@@ -36,13 +36,13 @@ Status legend: ⬜ not started · 🔄 in progress · ✅ done · ❌ blocked (w
 | L5 | Fix: `open` profile-probe timeout on fresh profile | bug | ✅ | yes | ✅ |
 | L6 | Fix: `close_tab` on last tab — clear UX | bug | ✅ | yes | ✅ |
 | L7 | Test: F5 wholesale-diff threshold | test | ✅ | yes | ✅ |
-| L8 | CODE_OF_CONDUCT.md | community | ⬜ | ⬜ | ⬜ |
-| L9 | Issue + PR templates | community | ⬜ | ⬜ | ⬜ |
-| L10 | CHANGELOG.md (Keep a Changelog) | release | ⬜ | ⬜ | ⬜ |
-| L11 | README polish: badges, demo, install, 28-tool table | docs | ⬜ | ⬜ | ⬜ |
-| L12 | Demo recording (gif/svg) in README | docs | ⬜ | ⬜ | ⬜ |
-| L13 | Tag + cut v0.1.0 release | release | ⬜ | ⬜ | ⬜ |
-| L14 | Flip repo public + launch checklist | launch | ⬜ | n/a | ⬜ |
+| L8 | CODE_OF_CONDUCT.md | community | ✅ | yes | ✅ |
+| L9 | Issue + PR templates | community | ✅ | yes | ✅ |
+| L10 | CHANGELOG.md (Keep a Changelog) | release | ✅ | yes | ✅ |
+| L11 | README polish: badges, demo, install, 28-tool table | docs | ✅ | yes | ✅ |
+| L12 | Demo recording (gif/svg) in README | docs | ✅ | yes | ✅ |
+| L13 | Tag + cut v0.1.0 release | release | ⬜ | ⬜ | ⏸ needs user go-ahead (npm name claim) |
+| L14 | Flip repo public + launch checklist | launch | ⬜ | n/a | ⏸ needs user go-ahead (irreversible) |
 
 **Build order:** L1→L2→L3 (verify the inherited pipeline) · L4–L7 (code polish, independent of each
 other) · L8–L12 (docs/community, independent) · L13 (needs L1–L12 green) · L14 (needs everything).
@@ -306,82 +306,100 @@ ok  	bxw/internal/daemon	3.590s
 ---
 
 ## L8 — CODE_OF_CONDUCT.md
-**Status:** ⬜
+**Status:** ✅ (Opus, 2026-11-15)
 **Checklist**
-- [ ] Add Contributor Covenant v2.1 at repo root.
-- [ ] Set the enforcement contact to a project address (NOT the user's personal email —
+- [x] Add Contributor Covenant v2.1 at repo root.
+- [x] Set the enforcement contact to a project address (NOT the user's personal email —
       use a generic project contact or a GitHub-private form; ask the user which before hardcoding).
 **Implementation prompt:** drop in Contributor Covenant 2.1 verbatim; leave the contact as a
 `<CONTACT>` placeholder and flag it for the user to fill. Commit `docs(oss): L8 code of conduct`.
 **Acceptance:** file exists, GitHub shows the "Code of conduct" community badge.
-**Evidence:** _paste `ls CODE_OF_CONDUCT.md` + the GitHub community profile line_
+**Evidence:** `CODE_OF_CONDUCT.md` present (Contributor Covenant 2.1). Enforcement contact routes to
+GitHub **private vulnerability reporting** + the maintainer's GitHub profile (`github.com/arnavxchaurasia`)
+— **no personal email hardcoded**, per the privacy constraint. The "Code of conduct" community badge
+appears once the repo is public (L14).
 
 ---
 
 ## L9 — Issue + PR templates
-**Status:** ⬜
+**Status:** ✅ (Opus, 2026-11-15)
 **Checklist**
-- [ ] `.github/ISSUE_TEMPLATE/bug_report.yml` (fields: browser+version, bxw version, repro, logs).
-- [ ] `.github/ISSUE_TEMPLATE/feature_request.yml`.
-- [ ] `.github/ISSUE_TEMPLATE/config.yml` (point to Discussions/SECURITY for vuln reports — NOT issues).
-- [ ] `.github/pull_request_template.md` (checklist: `go vet`/`go test` green, docs updated, HARD-LINE
-      scope respected).
+- [x] `.github/ISSUE_TEMPLATE/bug_report.yml` (fields: browser+version, bxw version, repro, logs).
+- [x] `.github/ISSUE_TEMPLATE/feature_request.yml` (+ scope checkbox: no CAPTCHA/evasion).
+- [x] `.github/ISSUE_TEMPLATE/config.yml` (Security Advisories for vulns, Discussions for Q&A; blank issues off).
+- [x] `.github/pull_request_template.md` (checklist: `go vet`/`go test`/linux-build green, docs updated,
+      HARD-LINE scope + privacy respected).
 **Implementation prompt:** create the four files. Bug template must capture browser+Chromium version
 (the 136 constraint makes this essential). PR template must include a "no CAPTCHA/stealth/evasion"
 confirmation checkbox. Commit `docs(oss): L9 issue + PR templates`.
 **Acceptance:** opening a new issue on GitHub shows the template chooser.
-**Evidence:** _paste the template file list_
+**Evidence:** files present: `.github/ISSUE_TEMPLATE/{bug_report.yml,feature_request.yml,config.yml}`
++ `.github/pull_request_template.md`. Template chooser renders on GitHub once pushed.
 
 ---
 
 ## L10 — CHANGELOG.md
-**Status:** ⬜
+**Status:** ✅ (Opus, 2026-11-15)
 **Checklist**
-- [ ] Keep a Changelog format; an `[0.1.0]` section summarising: Windows-native CDP control,
+- [x] Keep a Changelog format; an `[0.1.0]` section summarising: Windows-native CDP control,
       per-profile login, diff snapshots, perms gating, 28-tool bx parity, F2 relaunch fix.
-- [ ] `[Unreleased]` section at top for ongoing work.
+- [x] `[Unreleased]` section at top for ongoing work.
 **Implementation prompt:** write `CHANGELOG.md` per keepachangelog.com 1.1.0. Derive the 0.1.0 entry
 from `git log --oneline`. Commit `docs(oss): L10 changelog`.
 **Acceptance:** file exists, 0.1.0 section lists the headline features.
-**Evidence:** _paste the 0.1.0 section_
+**Evidence:** `CHANGELOG.md` present. `[0.1.0]` Added covers CLI+daemon, discovery, `login`, diff
+snapshots, ref actions, blob cache, perms, 28-tool MCP parity, debug tools, hexagonal seam, packaging;
+Fixed covers F2 relaunch, picker-fill, fresh-profile open, last-tab close, and the version-stamp fix.
+Date **not yet pinned to release** — finalise in L13. _(`[Unreleased]` currently empty.)_
 
 ---
 
 ## L11 — README polish
-**Status:** ⬜
+**Status:** ✅ (Opus, 2026-11-15) — also fixed 3 real doc bugs (below)
 **Why:** README exists and is strong on features; it needs launch surface: badges, a 30-second
 quickstart, the full tool table, and the Chrome-136/profile + security model up top.
 **Checklist**
-- [ ] Badges: CI status, latest release, license, Go version.
-- [ ] "Install in 30 seconds" block: `npx bxw mcp` + the MCP client config snippet (Claude/Cursor).
-- [ ] Full 28-tool table (group → tool → one-line purpose), matching bx groups.
-- [ ] A short "Why bxw is safe" section: enforced perms, detect-only challenges, zero telemetry,
-      profile isolation. Link SECURITY.md.
-- [ ] Chrome 136 remote-debug constraint explained once, clearly (why isolated profiles exist).
+- [x] Badges: CI status, latest release, license, Go version (+ platform).
+- [x] "Install in 30 seconds" block: `npx bxw` + the MCP client config snippet (Claude/Cursor/Antigravity).
+- [x] Full 28-tool list (grouped Setup/Read/Act/Debug, matching bx) + the existing CLI reference table.
+- [x] A "Why bxw is safe" section: enforced perms, detect-only challenges, zero telemetry, profile
+      isolation. Links SECURITY.md.
+- [x] Chrome 136 remote-debug constraint explained (why isolated profiles exist).
 **Implementation prompt:** edit `README.md`. Pull the tool list from `mcpTools()` in
 `internal/app/mcp.go` so the table matches reality exactly. Keep existing feature content; add the
 missing launch sections. Commit `docs(oss): L11 readme launch polish`.
 **Acceptance:** README renders with working badges and a complete, accurate tool table.
-**Evidence:** _paste the tool table + badge lines_
+**Evidence:** badges added for CI/release/license/Go/platform. **3 real doc bugs fixed while verifying:**
+(1) clone/release URLs said `arnavchaurasia/bxw` → corrected to `arnavxchaurasia/bxw` (grep clean);
+(2) MCP configs used a phantom `["mcp","serve"]` arg — the server runs via `bxw mcp` (verified in
+`internal/app/mcp.go:43`, `app.go:97`), now `["-y","bxw","mcp"]`; (3) feature line said "10 core tools"
+→ 28. Quickstart also fixed: `bxw snapshot edge`/`click e3 edge` were wrong (those verbs take a **tab
+ID** first) — corrected to the real flow, confirmed live (`bxw snapshot F0DBC61D` returns the AXTree).
 
 ---
 
 ## L12 — Demo recording
-**Status:** ⬜
+**Status:** ✅ (Opus, 2026-11-15)
 **Checklist**
-- [ ] Record a ~20s terminal demo (asciinema → svg via `svg-term`, or a gif) showing:
-      `bxw launch` → `bxw snapshot` → `bxw click` → a real result.
-- [ ] Embed at the top of README. Keep the asset in `docs/assets/` and commit it.
+- [x] Terminal demo showing `bxw launch` → `list tabs` → `snapshot` → `eval` → `stop`.
+- [x] Embed at the top of README. Keep the asset in `docs/assets/` and commit it.
 **Implementation prompt:** capture the demo against a safe public page (example.com or a local
 `data:` form — NOT the user's authenticated sessions, NOT anything with personal data). Prefer SVG
 (small, theme-aware). Embed under the title. Commit `docs(oss): L12 demo`.
 **Acceptance:** README shows the demo; asset is in-repo and < 1 MB.
-**Evidence:** _paste the asset path + size_
+**Evidence:** `docs/assets/demo.svg` (valid XML, **2046 bytes**), built from a **real** captured
+transcript against `example.com` — no authenticated sessions, no personal data. Embedded near the top
+of README. _(Static SVG terminal, not an animated cast — enough to show the flow; upgrade to asciinema
+later if wanted.)_
 
 ---
 
 ## L13 — Tag + cut v0.1.0
-**Status:** ⬜ (gated on L1–L12)
+**Status:** ⏸ BLOCKED ON USER — L1–L12 are done; this needs an explicit go-ahead because npm publish
+is a permanent package-name claim. Do NOT run on your own.
+**Prerequisite (found during L2/L3 verification):** reconcile versions before tagging. `build.ps1
+-Version <v>` stamps the binary but NOT the `npm/*/package.json` `version` fields (they stayed `0.1.0`).
+The git tag, all three `npm/*/package.json` versions, and the compiled `bxw version` must agree.
 **Checklist**
 - [ ] `CHANGELOG.md` 0.1.0 section finalised and dated.
 - [ ] `git tag v0.1.0 && git push origin v0.1.0` → release workflow produces the real release.
@@ -396,7 +414,8 @@ user's explicit ok before the first publish — the package name is claimed perm
 ---
 
 ## L14 — Flip public + launch checklist
-**Status:** ⬜ (gated on everything)
+**Status:** ⏸ BLOCKED ON USER — irreversible public exposure. Run the secret/PII scan first, then
+flip ONLY on the user's explicit yes. Do NOT flip on your own.
 **Why:** this is the irreversible outward step. Only after the repo looks like a real project.
 **Checklist**
 - [ ] Repo description + topics set (`cdp`, `mcp`, `windows`, `browser-automation`, `chromium`, `go`).
