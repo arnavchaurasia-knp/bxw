@@ -15,6 +15,7 @@ import (
 	"github.com/chromedp/cdproto/page"
 
 	"bxw/internal/config"
+	"bxw/internal/contextmgr"
 	"bxw/internal/exit"
 	"bxw/internal/history"
 )
@@ -121,6 +122,10 @@ func (d *Daemon) actOn(tabID string, timeout time.Duration, fn func(ctx context.
 		_ = history.Log(d.br.Name, "Default", tabID, r.URL, r.Title, "agent")
 	}
 
+	// F2: Record action in durable session model and append dated note
+	summaryText := r.TerseSummary("act")
+	_ = contextmgr.RecordAction(d.br.Name, "default", tabID, "action", summaryText, "", "")
+
 	return r, nil
 }
 
@@ -200,6 +205,16 @@ func (d *Daemon) snapshot(tabID string, full bool, scopeRef, findQuery string, t
 
 	// Save baseline to disk: state/<browser>/<tab>.json
 	_ = SaveTabState(d.br.Name, tabID, Snapshot{URL: url, Title: title, Nodes: nodes, Hash: currHash}, refs)
+
+	// F2: Update structured machine state with latest snapshot digest
+	if sc, err := contextmgr.LoadSession("default"); err == nil {
+		sc.Browser = d.br.Name
+		sc.ActiveTab = tabID
+		sc.URL = url
+		sc.Title = title
+		sc.LastSnapshot = currHash
+		_ = contextmgr.SaveSession(sc)
+	}
 
 	return snap, nil
 }

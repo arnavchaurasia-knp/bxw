@@ -92,7 +92,7 @@ If §1 shows drift (dashboard ahead of git/tests), your first commit of the sess
 | # | Feature | Phase | Daemon | CLI | MCP | Tests | Status |
 |---|---|---|---|---|---|---|---|
 | F1 | Stable semantic refs (role + accessible-name identity) | 0 Foundations | ✅ | n/a | n/a | ✅ | ✅ |
-| F2 | Durable session state model (on-disk page model) | 0 Foundations | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| F2 | Durable session state model (on-disk page model) | 0 Foundations | ✅ | n/a | n/a | ✅ | ✅ |
 | C1 | Ranked retrieval / query API | 1 Context | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | C2 | Semantic action deltas | 1 Context | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | C3 | Token-budgeted / progressive snapshots | 1 Context | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -202,26 +202,27 @@ Nav-invalidation (loader guard) + live same-loader re-render are exercised by th
 → `ok  bxw/internal/daemon`; full `go test ./...` green; `go vet` clean; `GOOS=linux go build ./...` green.
 
 ## F2 — Durable session state model
-**Status:** ⬜ · **Why:** the agent should query a maintained page/session model instead of re-dumping state.
+**Status:** ✅ (2026-11-15) · **Why:** the agent should query a maintained page/session model instead of re-dumping state.
 Foundation for C4/C5.
 **Industry practice:** short/long-term memory separation (agent-memory systems); event-sourced state.
 **Prior art:** `Facets-cloud/flow` (MIT) — two-store split (DB state + Markdown narrative) and append-only
 dated notes. Adapt the model, not the code.
 **Checklist**
-- [ ] **Two stores, flow-style:** structured state (current URL/title, last snapshot digest, stable-region
+- [x] **Two stores, flow-style:** structured state (current URL/title, last snapshot digest, stable-region
       hashes for C4, session/tab bindings) in a small machine file (keep JSON or move to SQLite); narrative
       (what the agent did, dated) as **append-only Markdown notes** the user can read/grep/edit. The agent
       never hand-edits the state file's machine fields.
-- [ ] Each mutating `actOn` appends a short dated note (≤10 lines: what changed / what's next / blocked-on —
+- [x] Each mutating `actOn` appends a short dated note (≤10 lines: what changed / what's next / blocked-on —
       sourced from the C2 semantic delta). Corrections are **new notes, never edits**.
-- [ ] Updated transactionally; survives daemon restart (self-heal, R2). Content referenced by blob hash, never inlined.
+- [x] Updated transactionally; survives daemon restart (self-heal, R2). Content referenced by blob hash, never inlined.
 **Implementation prompt:** define a `SessionModel` (structured state) + an append-only dated-note log under
 `context/`/`history/`. Write state after each snapshot; append a note after each mutating action, drawn from
 C2's semantic summary. Keep the state file machine-owned and the notes human-readable. Reference page content
 by `bxw://cache` hash. Mirror flow's confirm/durability discipline for what gets written.
 **Tests:** `contextmgr` test — drive two actions, assert state records both + two dated notes append (not
 overwrite), reload from disk, assert round-trip; a "correction" adds a 3rd note and leaves the first two intact.
-**Acceptance:** state round-trips + notes are append-only across a simulated restart. **Evidence:** _test run_
+**Acceptance:** state round-trips + notes are append-only across a simulated restart.
+**Evidence:** `go test ./internal/contextmgr -run 'TestF2DurableSessionStateModel' -count=1` -> `PASS ok bxw/internal/contextmgr 1.525s`; full `go test ./...` green; `go vet` clean; `GOOS=linux go build ./...` green.
 
 ---
 
