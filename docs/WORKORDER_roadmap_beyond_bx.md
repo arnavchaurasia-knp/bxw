@@ -152,6 +152,13 @@ stays scoped to bxw's own profile dirs. Phase 5 output passes through S1 redacti
 - **Testing:** the **test pyramid** (unit → integration → e2e), **golden/snapshot** tests for deterministic
   output, hermetic fixtures (`data:` URLs / local server), no live-internet dependence in tests.
 - **Release hygiene:** **Conventional Commits**, **SemVer**, **Keep a Changelog** (see `WORKORDER_release_readiness.md`).
+- **Prior art for memory (MIT, safe to adapt with attribution):** [`Facets-cloud/flow`](https://github.com/Facets-cloud/flow)
+  — a local CLI for cross-session agent continuity. We borrow its *memory model* (below); we do **not** copy its
+  code. What bxw takes: (a) **two-store split** — a structured DB for state + plain Markdown for human-readable
+  narrative the user can grep/edit; (b) **append-only dated notes** (corrections are new notes, never edits);
+  (c) a **close-out distillation** step (a session that never closes loses its learnings); (d) **lazy pointers**
+  — print paths, load content on demand. What bxw improves: flow documents "No search" and full-dump loading of
+  a task's notes; bxw's **C1 ranked retrieval + C3 budgeting + C4 memoization** are exactly that missing layer.
 
 ---
 
@@ -179,15 +186,23 @@ after navigation, assert it correctly invalidates with the "snapshot again" erro
 **Status:** ⬜ · **Why:** the agent should query a maintained page/session model instead of re-dumping state.
 Foundation for C4/C5.
 **Industry practice:** short/long-term memory separation (agent-memory systems); event-sourced state.
+**Prior art:** `Facets-cloud/flow` (MIT) — two-store split (DB state + Markdown narrative) and append-only
+dated notes. Adapt the model, not the code.
 **Checklist**
-- [ ] Daemon maintains a per-session `context/<session>.json` *page model*: current URL/title, last snapshot
-      digest, stable-region hashes (C4), and an append-only action log (C5).
-- [ ] Updated transactionally on every `actOn`; survives daemon restart (self-heal, R2).
-**Implementation prompt:** define a `SessionModel` struct persisted under `context/`. Write it after each
-mutating action and each snapshot. Keep it small and queryable (JSON). This is the backbone other Phase-1
-tasks read from; do not inline page content here — reference blobs by hash.
-**Tests:** `contextmgr` test — drive two actions, assert the model records both, reload from disk, assert
-state round-trips. **Acceptance:** model persists + round-trips across a simulated restart. **Evidence:** _test run_
+- [ ] **Two stores, flow-style:** structured state (current URL/title, last snapshot digest, stable-region
+      hashes for C4, session/tab bindings) in a small machine file (keep JSON or move to SQLite); narrative
+      (what the agent did, dated) as **append-only Markdown notes** the user can read/grep/edit. The agent
+      never hand-edits the state file's machine fields.
+- [ ] Each mutating `actOn` appends a short dated note (≤10 lines: what changed / what's next / blocked-on —
+      sourced from the C2 semantic delta). Corrections are **new notes, never edits**.
+- [ ] Updated transactionally; survives daemon restart (self-heal, R2). Content referenced by blob hash, never inlined.
+**Implementation prompt:** define a `SessionModel` (structured state) + an append-only dated-note log under
+`context/`/`history/`. Write state after each snapshot; append a note after each mutating action, drawn from
+C2's semantic summary. Keep the state file machine-owned and the notes human-readable. Reference page content
+by `bxw://cache` hash. Mirror flow's confirm/durability discipline for what gets written.
+**Tests:** `contextmgr` test — drive two actions, assert state records both + two dated notes append (not
+overwrite), reload from disk, assert round-trip; a "correction" adds a 3rd note and leaves the first two intact.
+**Acceptance:** state round-trips + notes are append-only across a simulated restart. **Evidence:** _test run_
 
 ---
 
@@ -245,17 +260,25 @@ SessionModel. On snapshot, replace an unchanged region with a one-line reference
 **Tests:** snapshot a `data:` page twice with only the main region changed; assert nav/footer come back as
 cache references and main re-expands. **Acceptance:** unchanged regions collapse to references. **Evidence:** _test run_
 
-## C5 — Episodic recall
-**Status:** ⬜ · **Why:** cheap "what have I already done here" so the agent re-orients without re-exploring.
+## C5 — Episodic recall + close-out distillation
+**Status:** ⬜ · **Why:** cheap "what have I already done here" so the agent re-orients without re-exploring;
+and a distilled takeaway when a task ends (flow's lesson: a session that never closes loses its learnings).
 **Industry practice:** episodic agent memory; event sourcing.
+**Prior art:** `Facets-cloud/flow` (MIT) — `flow done` sweeps a transcript into durable facts; lazy pointer
+loading. bxw adds the **ranked/selective retrieval flow explicitly lacks** (C1) instead of a full dump.
 **Checklist**
-- [ ] `bxw recall <tab|session> [--grep] [--since]` summarises the F2 action log + history into a compact
-      timeline (actions taken, pages visited, outcomes).
-- [ ] MCP tool `recall`; reads only — no mutation.
-**Implementation prompt:** query the SessionModel action log + `history/` and render a compact, deduped
-timeline. Keep it bounded (last N / budgeted). Read-only.
-**Tests:** seed an action log, assert `recall` renders the expected compact timeline, honours `--grep`/`--since`.
-**Acceptance:** bounded, accurate recall. **Evidence:** _test run_
+- [ ] `bxw recall <tab|session> [--grep] [--since]` renders the F2 dated notes + `history/` into a compact,
+      deduped timeline — **selective (C1-ranked / budgeted), not a full dump**. Read-only MCP tool `recall`.
+- [ ] `bxw done <session>` (close-out): distils the session's notes into a short durable summary persisted to
+      the session's narrative, so the next session loads a 5-line takeaway instead of replaying everything.
+- [ ] Lazy pointers: `recall` prints note paths + a budgeted summary, not every note inlined.
+**Implementation prompt:** query the SessionModel notes + `history/`, render a bounded deduped timeline ranked
+by relevance (reuse C1). Add a close-out that summarises notes into a durable takeaway (flow's `done` pattern)
+— on-disk, append-only. Keep it read-only except the explicit close-out write. Everything budgeted; print
+pointers over inlined content.
+**Tests:** seed dated notes, assert `recall` renders a bounded ranked timeline honouring `--grep`/`--since`;
+assert `done` writes a compact takeaway and leaves the raw notes intact. **Acceptance:** bounded recall +
+durable close-out. **Evidence:** _test run_
 
 ---
 
