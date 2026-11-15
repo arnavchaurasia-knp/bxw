@@ -1,0 +1,39 @@
+name: Feature request
+description: Suggest an improvement or new capability for bxw
+title: "[feat]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea. Note bxw's hard scope line: it will **not** add
+        CAPTCHA solving, bot-detection evasion, stealth/fingerprint spoofing, or
+        anti-automation circumvention. Challenge handling is detect-and-hand-to-human
+        only. Requests in that direction will be declined.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: The use case or pain point, not the solution yet.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like bxw to do? A new verb, flag, MCP tool, behaviour?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This request does not involve CAPTCHA solving, bot-detection evasion, or stealth/fingerprint spoofing.
+          required: true

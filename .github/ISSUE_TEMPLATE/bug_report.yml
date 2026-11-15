@@ -1,0 +1,74 @@
+name: Bug report
+description: Report a problem driving a browser with bxw
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please fill in as much as you can — the
+        browser + Chromium version matters a lot here (Chromium 136 changed
+        remote-debugging behaviour on the default profile).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you run, what did you expect, what did you get?
+      placeholder: |
+        I ran `bxw ...` and expected ... but instead ...
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The exact bxw commands, in order.
+      placeholder: |
+        1. bxw launch edge https://example.com
+        2. bxw snapshot edge
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: bxw-version
+    attributes:
+      label: bxw version
+      description: Output of `bxw version`.
+      placeholder: "bxw 0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Browser
+      options:
+        - Microsoft Edge
+        - Brave
+        - Google Chrome
+        - Vivaldi
+        - Chromium
+        - Other (note in description)
+    validations:
+      required: true
+  - type: input
+    id: browser-version
+    attributes:
+      label: Browser / Chromium version
+      description: e.g. Edge 131 (Chromium 131). Find it at edge://version or chrome://version.
+    validations:
+      required: true
+  - type: input
+    id: windows-version
+    attributes:
+      label: Windows version
+      placeholder: "Windows 11 23H2"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / output
+      description: Paste any error output. Logs live at `%LOCALAPPDATA%\bxw\logs\`.
+      render: text
+    validations:
+      required: false
