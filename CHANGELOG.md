@@ -1,0 +1,69 @@
+# Changelog
+
+All notable changes to this project are documented here.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.1.0] - 2026-11-15
+
+First public release. Windows-native, clean-room Go. Drives Chromium browsers
+(Edge, Brave, Chrome, Vivaldi, Chromium) by profile over the Chrome DevTools
+Protocol, for AI coding agents.
+
+### Added
+- **CLI + daemon architecture.** Single static binary; an AF_UNIX singleton
+  daemon multiplexes CDP WebSocket sessions behind the CLI and MCP server.
+- **Windows browser & profile discovery.** Detects installed Chromium browsers
+  via registry `App Paths`; enumerates profiles from each browser's `Local State`.
+- **Browser-independent persistent profiles (`bxw login`).** Works around
+  Chromium 136's default-profile remote-debugging block by using isolated,
+  persistent profile dirs under `%LOCALAPPDATA%\bxw\profiles\<browser>`; sign in
+  once and the session persists across runs without touching the real profile.
+- **Token-efficient diff snapshots.** Accessibility-tree snapshots with
+  sequential refs (`e1`, `e2`, …) emitted as `+`/`-`/`~` deltas against cached
+  baselines (or `unchanged`), cutting agent token use sharply on iterative turns.
+- **Ref-based precision actions.** `click`, `fill`, `type`, `key`, `hover`,
+  `drag`, `upload` by snapshot ref or CSS selector, with terse 1-line results.
+- **Content-addressed blob cache.** Large artifacts (screenshots, full HTML)
+  saved to disk and referenced via `bxw://cache/<sha256>` MCP resource URIs.
+- **Risk-gated permissions (`bxw perms`).** Origin-scoped capability gating
+  (`form_submit`, `purchase`, `delete`, `download`, `enter_credentials`,
+  `cross_origin_nav`).
+- **Audit log & context store.** Append-only navigation history and a durable
+  per-session context store.
+- **Full bx v0.4.1 MCP parity — 28 tools** over a zero-dependency JSON-RPC 2.0
+  stdio server: `list_browsers`, `list_tabs`, `open`, `close_tab`, `goto`,
+  `wait`, `read`, `console`, `network`, `storage`, `performance`, `snapshot`,
+  `screenshot`, `click`, `hover`, `drag`, `upload`, `dialog`, `fill`, `type`,
+  `key`, `eval`, `cdp`, `emulate`, `doctor`, `setup`, `launch`, `list_profiles`.
+  `bxw mcp install` registers the server with Claude Desktop, Cursor, and Antigravity.
+- **Debug tooling.** `console`, `network`, `storage`, `performance` (Core Web
+  Vitals), `emulate` (device/network/CPU/geo/color-scheme), and `cdp` (raw
+  DevTools passthrough).
+- **Hexagonal OS seam (`osport.Platform`).** All Windows-specific code is
+  isolated; a `!windows` stub keeps the repo cross-compilable for CI.
+- **Packaging.** npm dispatch (`npx bxw`) with per-arch subpackages, plus
+  windows-latest + ubuntu-latest CI and a tag-triggered release pipeline that
+  publishes checksummed win32 x64/arm64 archives.
+
+### Fixed
+- **CDP singleton collision on relaunch (F2).** `stop` previously killed only the
+  daemon, leaving the browser alive; the next launch handed off to the existing
+  instance and silently ignored the new debug port. Launch now reuses a live
+  profile's `DevToolsActivePort`, and `stop` tears down every browser process
+  bound to the bxw profile dir (and only those).
+- **`fill` on native picker inputs** (`date`/`time`/`datetime-local`/`month`/
+  `week`/`color`/`range`) now dispatches bubbling `input`+`change` events and
+  verifies the value stuck, instead of silently reporting a false success.
+- **`open` on a fresh profile** no longer times out on the first-run/welcome tab.
+- **`close_tab` on the last tab** now refuses with clear guidance instead of
+  letting the browser exit and orphaning the CDP session.
+- **Release binaries are now version-stamped** (`bxw/internal/app.Version`); the
+  release build previously stamped a non-existent `main.version` and shipped as
+  `0.0.0-dev`.
+
+[Unreleased]: https://github.com/arnavxchaurasia/bxw/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/arnavxchaurasia/bxw/releases/tag/v0.1.0
