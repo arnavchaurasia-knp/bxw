@@ -33,6 +33,17 @@ jobs:
       - name: Build Binary
         run: go build -v -o ${{ runner.os == 'Windows' && 'bxw.exe' || 'bxw' }} .
 
+      - name: Version Stamp Smoke
+        shell: bash
+        run: |
+          EXE=bxw_vtest
+          [ "${{ runner.os }}" = "Windows" ] && EXE=bxw_vtest.exe
+          go build -ldflags "-X bxw/internal/app.Version=ci-stamp-test" -o "$EXE" .
+          out=$(./"$EXE" version)
+          echo "$out"
+          echo "$out" | grep -q "ci-stamp-test" || { echo "FAIL: version not stamped via bxw/internal/app.Version (check release ldflags target)"; exit 1; }
+          rm -f "$EXE"
+
       - name: Smoke Test (Windows)
         if: runner.os == 'Windows'
         run: |
