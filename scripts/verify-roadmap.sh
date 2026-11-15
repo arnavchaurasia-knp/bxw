@@ -36,7 +36,11 @@ while IFS= read -r line; do
 
   checked=$((checked+1))
 
-  if git log --oneline --all 2>/dev/null | grep -qw "$id"; then
+  # Capture the log first, then match via here-string. Piping `git log | grep -q`
+  # under `set -o pipefail` reports git's SIGPIPE (141) when grep short-circuits on a
+  # match, which would make a real match look like a failure.
+  gitlog="$(git log --oneline --all 2>/dev/null || true)"
+  if grep -qw "$id" <<<"$gitlog"; then
     commit_ok="OK"
   else
     commit_ok="FAIL"
