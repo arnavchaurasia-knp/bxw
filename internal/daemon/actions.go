@@ -108,8 +108,9 @@ func (d *Daemon) actOn(tabID string, timeout time.Duration, fn func(ctx context.
 	if base, err := LoadTabState(d.br.Name, tabID); err == nil && len(base.Nodes) > 0 {
 		tree, err := cdp.Call(ctx, sess.conn, accessibility.GetFullAXTree, accessibility.GetFullAXTreeParams{})
 		if err == nil {
-			nodes, refs := buildSnapshot(tree.Nodes)
+			nodes, refs, descs := buildSnapshot(tree.Nodes)
 			sess.refs = refs
+			sess.refDescs = descs
 			_, changedCount := DiffSnapshots(base.Nodes, nodes)
 			r.ChangedNodes = changedCount
 			_ = SaveTabState(d.br.Name, tabID, Snapshot{URL: r.URL, Title: r.Title, Nodes: nodes, Hash: ComputeHash(nodes)}, refs)
@@ -149,8 +150,9 @@ func (d *Daemon) snapshot(tabID string, full bool, scopeRef, findQuery string, t
 		return Snapshot{}, exit.New(exit.Upstream, "accessibility getFullAXTree: %v", err)
 	}
 
-	nodes, refs := buildSnapshot(tree.Nodes)
+	nodes, refs, descs := buildSnapshot(tree.Nodes)
 	sess.refs = refs
+	sess.refDescs = descs
 	sess.refLoader = sess.loaderID(ctx)
 
 	url, title := sess.location(ctx)

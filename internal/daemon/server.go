@@ -699,6 +699,7 @@ func (d *Daemon) tabSession(tabID string) (*tabSession, error) {
 		wsURL:      tab.WS,
 		conn:       tc,
 		refs:       make(map[string]cdp.BackendNodeID),
+		refDescs:   make(map[string]RefDescriptor),
 		consoleBuf: newRingBuffer(500),
 		netBuf:     newRingBuffer(500),
 	}

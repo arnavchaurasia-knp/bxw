@@ -20,6 +20,29 @@ type SnapNode struct {
 	Props []string `json:"props,omitempty"`
 }
 
+// RefDescriptor is the stable identity of a ref (role + accessible name). F1 uses
+// it to re-resolve a ref after a benign re-render recreates the underlying DOM node,
+// so an agent's eN keeps pointing at the same logical element across snapshots.
+type RefDescriptor struct {
+	Role string `json:"role"`
+	Name string `json:"name"`
+}
+
+// findRefByDescriptor returns the ref of the first node matching want's role+name.
+// First-match semantics (like Playwright locators). A descriptor with an empty name
+// is too ambiguous to re-resolve by, so callers skip the fallback in that case.
+func findRefByDescriptor(nodes []SnapNode, want RefDescriptor) (string, bool) {
+	if want.Name == "" {
+		return "", false
+	}
+	for _, n := range nodes {
+		if n.Role == want.Role && n.Name == want.Name {
+			return n.Ref, true
+		}
+	}
+	return "", false
+}
+
 // Snapshot is the formatted accessibility snapshot of a tab.
 type Snapshot struct {
 	URL          string     `json:"url"`
@@ -49,7 +72,9 @@ var leafRoles = map[string]bool{
 }
 
 // buildSnapshot traverses an accessibility tree and assigns sequential e1, e2... refs.
-func buildSnapshot(nodes []*accessibility.Node) ([]SnapNode, map[string]cdp.BackendNodeID) {
+// It returns the nodes, a ref→backend-node map (fast-path resolution), and a
+// ref→descriptor map (F1 stable identity for re-resolution after a re-render).
+func buildSnapshot(nodes []*accessibility.Node) ([]SnapNode, map[string]cdp.BackendNodeID, map[string]RefDescriptor) {
 	byID := make(map[accessibility.NodeID]*accessibility.Node, len(nodes))
 	var root *accessibility.Node
 	for _, n := range nodes {
@@ -59,19 +84,21 @@ func buildSnapshot(nodes []*accessibility.Node) ([]SnapNode, map[string]cdp.Back
 		}
 	}
 	b := &snapBuilder{
-		byID: byID,
-		refs: make(map[string]cdp.BackendNodeID),
+		byID:  byID,
+		refs:  make(map[string]cdp.BackendNodeID),
+		descs: make(map[string]RefDescriptor),
 	}
 	if root != nil {
 		b.walk(root, 0, "")
 	}
-	return b.out, b.refs
+	return b.out, b.refs, b.descs
 }
 
 type snapBuilder struct {
-	byID map[accessibility.NodeID]*accessibility.Node
-	out  []SnapNode
-	refs map[string]cdp.BackendNodeID
+	byID  map[accessibility.NodeID]*accessibility.Node
+	out   []SnapNode
+	refs  map[string]cdp.BackendNodeID
+	descs map[string]RefDescriptor
 }
 
 func (b *snapBuilder) walk(n *accessibility.Node, depth int, parentName string) {
@@ -113,11 +140,13 @@ func (b *snapBuilder) add(n *accessibility.Node, depth int, role, name string) {
 	if n.BackendDOMNodeID != 0 {
 		b.refs[ref] = n.BackendDOMNodeID
 	}
+	clippedName := clipText(name, 80)
+	b.descs[ref] = RefDescriptor{Role: role, Name: clippedName}
 	b.out = append(b.out, SnapNode{
 		Ref:   ref,
 		Depth: depth,
 		Role:  role,
-		Name:  clipText(name, 80),
+		Name:  clippedName,
 		Value: clipText(axString(n.Value), 80),
 		Props: axProps(n),
 	})

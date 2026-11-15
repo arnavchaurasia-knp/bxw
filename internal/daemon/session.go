@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/chromedp/cdproto/accessibility"
 	"github.com/chromedp/cdproto/cdp"
 	jsonv2 "github.com/chromedp/cdproto/cdp/jsonv2"
 	"github.com/chromedp/cdproto/dom"
@@ -196,6 +197,7 @@ type tabSession struct {
 	interrupt context.CancelCauseFunc
 
 	refs      map[string]cdp.BackendNodeID
+	refDescs  map[string]RefDescriptor
 	refLoader cdp.LoaderID
 
 	consoleBuf *ringBuffer
@@ -291,6 +293,14 @@ func (sess *tabSession) eval(ctx context.Context, expr string, out any) error {
 var refPattern = regexp.MustCompile(`^e[0-9]+$`)
 
 // selector maps a snapshot ref (e.g. "e12") to "[data-bxw-ref=\"e12\"]" after tagging it on the DOM.
+//
+// Resolution order (F1 stable refs):
+//  1. Navigation guard — if the loader changed since the snapshot, the page navigated;
+//     refs are invalid and the caller must snapshot again.
+//  2. Fast path — resolve the recorded backend node id and tag it.
+//  3. Descriptor fallback — a benign same-loader re-render can recreate the node with a
+//     new backend id; re-find it by its stable role+name descriptor from a fresh AX tree
+//     so the agent's eN keeps pointing at the same logical element.
 func (sess *tabSession) selector(ctx context.Context, el string) (string, error) {
 	if el == "" {
 		return "", exit.New(exit.Validation, "an element (CSS selector or snapshot ref such as e12) is required")
@@ -299,22 +309,54 @@ func (sess *tabSession) selector(ctx context.Context, el string) (string, error)
 		return el, nil
 	}
 
-	backend, ok := sess.refs[el]
-	if !ok || (sess.refLoader != "" && sess.loaderID(ctx) != sess.refLoader) {
+	_, known := sess.refs[el]
+	desc, hasDesc := sess.refDescs[el]
+	if !known && !hasDesc {
 		return "", exit.New(exit.User, "%s is not in this tab's latest snapshot: run bxw snapshot %s again", el, sess.id)
 	}
 
-	node, err := cdp.Call(ctx, sess.conn, dom.ResolveNode, dom.ResolveNodeParams{BackendNodeID: backend})
-	if err != nil || node.Object == nil || node.Object.ObjectID == "" {
-		return "", exit.New(exit.User, "%s is no longer on the page: run bxw snapshot %s again", el, sess.id)
+	// 1. Navigation invalidates all refs.
+	if sess.refLoader != "" && sess.loaderID(ctx) != sess.refLoader {
+		return "", exit.New(exit.User, "%s is from a previous page (it navigated): run bxw snapshot %s again", el, sess.id)
 	}
 
+	// 2. Fast path: the recorded backend node is still live.
+	if backend, ok := sess.refs[el]; ok {
+		if sel, err := sess.tagBackend(ctx, el, backend); err == nil {
+			return sel, nil
+		}
+	}
+
+	// 3. Descriptor fallback: re-find the element by its stable identity after a re-render.
+	if hasDesc {
+		if tree, err := cdp.Call(ctx, sess.conn, accessibility.GetFullAXTree, accessibility.GetFullAXTreeParams{}); err == nil {
+			freshNodes, freshRefs, _ := buildSnapshot(tree.Nodes)
+			if ref, found := findRefByDescriptor(freshNodes, desc); found {
+				if nb, ok := freshRefs[ref]; ok {
+					if sel, err := sess.tagBackend(ctx, el, nb); err == nil {
+						sess.refs[el] = nb // refresh the fast-path mapping
+						return sel, nil
+					}
+				}
+			}
+		}
+	}
+
+	return "", exit.New(exit.User, "%s is no longer on the page: run bxw snapshot %s again", el, sess.id)
+}
+
+// tagBackend resolves a backend node id to a JS object, tags it with data-bxw-ref=<el>,
+// and returns the attribute selector. Returns an error if the node can no longer be resolved.
+func (sess *tabSession) tagBackend(ctx context.Context, el string, backend cdp.BackendNodeID) (string, error) {
+	node, err := cdp.Call(ctx, sess.conn, dom.ResolveNode, dom.ResolveNodeParams{BackendNodeID: backend})
+	if err != nil || node.Object == nil || node.Object.ObjectID == "" {
+		return "", fmt.Errorf("resolve backend node %d: %v", backend, err)
+	}
 	tagFn := fmt.Sprintf(`function() { (this.nodeType === 3 ? this.parentElement : this).setAttribute("data-bxw-ref", %q); }`, el)
-	_, err = cdp.Call(ctx, sess.conn, runtime.CallFunctionOn, runtime.CallFunctionOnParams{
+	if _, err := cdp.Call(ctx, sess.conn, runtime.CallFunctionOn, runtime.CallFunctionOnParams{
 		FunctionDeclaration: tagFn,
 		ObjectID:            node.Object.ObjectID,
-	})
-	if err != nil {
+	}); err != nil {
 		return "", exit.New(exit.Upstream, "mark %s: %v", el, err)
 	}
 	return fmt.Sprintf(`[data-bxw-ref=%q]`, el), nil

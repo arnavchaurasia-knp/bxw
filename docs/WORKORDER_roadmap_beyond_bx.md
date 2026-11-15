@@ -77,7 +77,7 @@ If §1 shows drift (dashboard ahead of git/tests), your first commit of the sess
 
 | # | Feature | Phase | Daemon | CLI | MCP | Tests | Status |
 |---|---|---|---|---|---|---|---|
-| F1 | Stable semantic refs (role + accessible-name identity) | 0 Foundations | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| F1 | Stable semantic refs (role + accessible-name identity) | 0 Foundations | ✅ | n/a | n/a | ✅ | ✅ |
 | F2 | Durable session state model (on-disk page model) | 0 Foundations | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | C1 | Ranked retrieval / query API | 1 Context | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | C2 | Semantic action deltas | 1 Context | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -165,22 +165,27 @@ stays scoped to bxw's own profile dirs. Phase 5 output passes through S1 redacti
 # ════════ PHASE 0 — FOUNDATIONS ════════
 
 ## F1 — Stable semantic refs
-**Status:** ⬜ · **Why:** bx refs go stale on re-render — the #1 agent failure. Durable identity makes every
-later token optimisation possible (an agent never re-snapshots just to re-locate an element).
+**Status:** ✅ (Opus, 2026-11-15) · **Why:** bx refs go stale on re-render — the #1 agent failure. Durable
+identity makes every later token optimisation possible (an agent never re-snapshots just to re-locate an element).
 **Industry practice:** Playwright role + accessible-name locators; ARIA roles; the browser accessibility tree.
 **Checklist**
-- [ ] Compute a stable key per node from `{role, accessible-name, DOM-path-hash, nearby-landmark}` (not the
-      volatile backendNodeId alone). Keep the `eN` surface for agents; map `eN → stable key → live node`.
-- [ ] On re-snapshot, re-resolve a ref by stable key first; fall back to re-tag only if the key moved.
-- [ ] `selector()` in `session.go` resolves a ref even after a benign re-render within the same loader.
+- [x] `buildSnapshot` records a `RefDescriptor{role, accessible-name}` per ref (`snapshot.go`), kept on the
+      session as `refDescs` alongside the backend-node map.
+- [x] `selector()` (`session.go`) resolves in order: nav guard (loader changed → invalidate) → fast path
+      (recorded backend node) → **descriptor fallback** (re-find by role+name from a fresh AX tree, refresh the
+      mapping) — so a ref survives a benign same-loader re-render that recreated the node.
+- [x] `findRefByDescriptor` is a pure, unit-tested matcher (first-match, empty-name rejected as ambiguous).
 **Implementation prompt:** extend `tabSession.refs` to store a stable descriptor, not just `BackendNodeID`.
 On resolve, try to re-find by `role`+accessible-name (via `Accessibility.queryAXTree` or a `querySelectorAll`
 + name match) before declaring the ref stale. Model the key on Playwright's locator priority
 (role+name > text > test-id > css). Keep refs stable across a soft re-render; only invalidate on navigation.
-**Tests to write:** `session_test.go` / `snapshot_test.go` — build a `data:` page, snapshot, mutate the
-DOM *without* navigation (reorder siblings), assert the same `eN` still resolves to the same logical element;
-after navigation, assert it correctly invalidates with the "snapshot again" error.
-**Acceptance:** a ref survives a sibling-reorder re-render; invalidates on navigation. **Evidence:** _test run_
+**Tests written:** `TestF1StableRefMatching` (`snapshot_test.go`) — reorders/renumbers nodes and asserts the
+"Learn more" link re-resolves by descriptor to its new ref, a removed descriptor does not match, and an
+empty-name descriptor is rejected. `TestBuildSnapshotFiltersAndRefs` extended to assert per-ref descriptors.
+Nav-invalidation (loader guard) + live same-loader re-render are exercised by the live `TestActionsLiveEndToEnd`.
+**Acceptance:** a ref survives a sibling-reorder re-render; invalidates on navigation.
+**Evidence:** `go test ./internal/daemon -run 'TestF1StableRefMatching|TestBuildSnapshotFiltersAndRefs' -count=1`
+→ `ok  bxw/internal/daemon`; full `go test ./...` green; `go vet` clean; `GOOS=linux go build ./...` green.
 
 ## F2 — Durable session state model
 **Status:** ⬜ · **Why:** the agent should query a maintained page/session model instead of re-dumping state.

@@ -71,10 +71,18 @@ func TestBuildSnapshotFiltersAndRefs(t *testing.T) {
 		},
 	}
 
-	snapNodes, refs := buildSnapshot(nodes)
+	snapNodes, refs, descs := buildSnapshot(nodes)
 
 	if len(snapNodes) != 2 {
 		t.Fatalf("expected 2 snap nodes, got %d", len(snapNodes))
+	}
+
+	// F1: buildSnapshot records a stable descriptor (role+name) per ref.
+	if descs["e1"] != (RefDescriptor{Role: "button", Name: "Submit Form"}) {
+		t.Errorf("expected descriptor e1 = {button, Submit Form}, got %+v", descs["e1"])
+	}
+	if descs["e2"] != (RefDescriptor{Role: "textbox", Name: "Username"}) {
+		t.Errorf("expected descriptor e2 = {textbox, Username}, got %+v", descs["e2"])
 	}
 
 	// First node: button (from under generic)
@@ -114,6 +122,40 @@ func TestBuildSnapshotFiltersAndRefs(t *testing.T) {
 	}
 	if !strings.Contains(rendered, `e2 textbox "Username" value="alice"`) {
 		t.Errorf("expected e2 formatted line in:\n%s", rendered)
+	}
+}
+
+// TestF1StableRefMatching proves the core F1 guarantee: after a benign re-render
+// reorders/renumbers elements, a ref re-resolves to the same logical element by its
+// stable role+name descriptor — even though its eN index changed and the underlying
+// DOM node was recreated. This is the pure, browser-free heart of selector()'s fallback.
+func TestF1StableRefMatching(t *testing.T) {
+	// Descriptor captured for the "Learn more" link when it was e2 in the original snapshot.
+	want := RefDescriptor{Role: "link", Name: "Learn more"}
+
+	// After a re-render: the link moved to the front (now e1), indices shifted, a new field appeared.
+	after := []SnapNode{
+		{Ref: "e1", Role: "link", Name: "Learn more"},
+		{Ref: "e2", Role: "button", Name: "Submit"},
+		{Ref: "e3", Role: "textbox", Name: "Email"},
+	}
+
+	ref, ok := findRefByDescriptor(after, want)
+	if !ok {
+		t.Fatal("expected to re-find the 'Learn more' link after re-render")
+	}
+	if ref != "e1" {
+		t.Fatalf("expected the link to re-resolve to e1 after reorder, got %s", ref)
+	}
+
+	// Negative: a descriptor that no longer exists must not match.
+	if r, ok := findRefByDescriptor(after, RefDescriptor{Role: "button", Name: "Checkout"}); ok {
+		t.Fatalf("expected no match for absent descriptor, got %s", r)
+	}
+
+	// Ambiguity guard: an empty name is too weak to re-resolve by.
+	if _, ok := findRefByDescriptor(after, RefDescriptor{Role: "link", Name: ""}); ok {
+		t.Fatal("expected empty-name descriptor to be rejected as ambiguous")
 	}
 }
 
