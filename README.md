@@ -1,10 +1,18 @@
 # bxw
 
+[![CI](https://github.com/arnavxchaurasia/bxw/actions/workflows/ci.yml/badge.svg)](https://github.com/arnavxchaurasia/bxw/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/arnavxchaurasia/bxw?include_prereleases&sort=semver)](https://github.com/arnavxchaurasia/bxw/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Go](https://img.shields.io/github/go-mod/go-version/arnavxchaurasia/bxw)](go.mod)
+[![Platform: Windows](https://img.shields.io/badge/platform-windows-0078D6)](#)
+
 **Drive the Windows Chromium browser you already have open — by profile, over the Chrome DevTools Protocol (CDP) — from AI coding agents.**
 
 `bxw` lets AI coding agents (Claude Desktop, Cursor, Antigravity, Codex, Cline) interact with real, authenticated browser sessions or isolated sandboxes. It extracts token-efficient accessibility snapshots with sequential element references (`e1`, `e2`, `e3`), then drives actions (`click`, `fill`, `type`, `key`, `eval`) with zero brittle coordinate guessing.
 
 Built in clean-room Go, `bxw` runs as a single static binary with no external runtimes, zero telemetry, and an OS-agnostic hexagonal core.
+
+![bxw demo — launch, list tabs, snapshot, eval, stop](docs/assets/demo.svg)
 
 ---
 
@@ -30,7 +38,7 @@ Built in clean-room Go, `bxw` runs as a single static binary with no external ru
   - `bxw fill <tab> e2 user@example.com`
   - `bxw type <tab> s3cr3t --submit Enter`
   - `bxw key <tab> Enter`
-- **Model Context Protocol (MCP) Server**: Built-in JSON-RPC 2.0 stdio server exposing 10 core tools + resource handlers to Claude Desktop, Cursor, and Antigravity.
+- **Model Context Protocol (MCP) Server**: Built-in JSON-RPC 2.0 stdio server exposing 28 tools (full `@facets-cloud/bx` v0.4.1 parity) + resource handlers to Claude Desktop, Cursor, and Antigravity.
 - **AF_UNIX Singleton Daemon**: Manages persistent WebSocket multiplexing to CDP behind a lightweight background daemon over Windows AF_UNIX domain sockets.
 
 ---
@@ -47,7 +55,7 @@ npm install -g bxw
 ```
 
 ### Option 2: Pre-compiled Windows Binaries
-Download the latest pre-compiled archive for your architecture from the [GitHub Releases](https://github.com/arnavchaurasia/bxw/releases) page:
+Download the latest pre-compiled archive for your architecture from the [GitHub Releases](https://github.com/arnavxchaurasia/bxw/releases) page:
 - **x64 (Intel/AMD)**: `bxw_windows_amd64.zip`
 - **ARM64 (Surface / Snapdragon)**: `bxw_windows_arm64.zip`
 
@@ -55,7 +63,7 @@ Extract `bxw.exe` and place it in your `PATH` (e.g. `%USERPROFILE%\bin` or `C:\W
 
 ### Option 3: Build from Source
 ```powershell
-git clone https://github.com/arnavchaurasia/bxw.git
+git clone https://github.com/arnavxchaurasia/bxw.git
 cd bxw
 go build -o bxw.exe .
 ```
@@ -73,16 +81,16 @@ Inspects all detected Chromium browsers, profile directories, running instances,
 ### 2. Isolated Mode (Sandbox)
 ```powershell
 # Launch an isolated Edge session
-bxw launch edge https://github.com
+bxw launch edge https://example.com
 
-# List open tabs
+# List open tabs — note the tab ID (e.g. F0DBC61D)
 bxw list tabs edge
 
-# Take an accessibility snapshot
-bxw snapshot edge
+# Take an accessibility snapshot (pass the tab ID, not the browser name)
+bxw snapshot F0DBC61D
 
-# Click an element by ref
-bxw click e3 edge
+# Click an element by its ref (tab ID first, then the ref)
+bxw click F0DBC61D e7
 
 # Stop the daemon & close the instance
 bxw stop edge
@@ -174,21 +182,22 @@ Add to `%APPDATA%\Claude\claude_desktop_config.json`:
 {
   "mcpServers": {
     "bxw": {
-      "command": "bxw",
-      "args": ["mcp", "serve"]
+      "command": "npx",
+      "args": ["-y", "bxw", "mcp"]
     }
   }
 }
 ```
+(If `bxw` is installed and on your `PATH`, use `"command": "bxw", "args": ["mcp"]` instead.)
 
 #### Cursor
-Add to `.cursor/mcp.json` (or Cursor Settings $\to$ Features $\to$ MCP):
+Add to `.cursor/mcp.json` (or Cursor Settings → Features → MCP):
 ```json
 {
   "mcpServers": {
     "bxw": {
-      "command": "bxw",
-      "args": ["mcp", "serve"]
+      "command": "npx",
+      "args": ["-y", "bxw", "mcp"]
     }
   }
 }
@@ -200,8 +209,8 @@ Add to `%USERPROFILE%\.gemini\antigravity\mcp_config.json`:
 {
   "mcpServers": {
     "bxw": {
-      "command": "bxw",
-      "args": ["mcp", "serve"]
+      "command": "npx",
+      "args": ["-y", "bxw", "mcp"]
     }
   }
 }
@@ -240,17 +249,23 @@ The core automation logic never branches on `runtime.GOOS`. All Windows-specific
 
 ---
 
-## Security
+## Why bxw is safe
 
-`bxw` has **zero external network telemetry**, makes no outbound internet requests, and requires **no administrator privileges**.
+`bxw` is built so an AI agent can touch a real, logged-in browser without becoming a liability:
 
-For detailed discussion on local loopback security, the difference between Isolated Agent Mode and Real-Profile Attach, and safety protocols, refer to [SECURITY.md](SECURITY.md).
+- **Zero telemetry.** No outbound internet requests, no analytics, no phone-home. It talks only to the local CDP endpoint of a browser you launched.
+- **No admin rights.** Runs entirely in user space; never edits system or security policy (HKLM).
+- **Profile isolation.** Agent sessions default to isolated, persistent profiles under `%LOCALAPPDATA%\bxw\profiles\` — your everyday browser profile is never driven unless you explicitly attach to it. Teardown only kills browser processes bound to bxw's own profile dir, never your personal browser.
+- **Risk-gated actions.** Sensitive capabilities (`form_submit`, `purchase`, `delete`, `download`, `enter_credentials`, `cross_origin_nav`) are permission-gated per origin via `bxw perms`.
+- **Challenges are detected, never defeated.** `bxw` will **not** solve CAPTCHAs, bypass "I'm not a robot" checks, or spoof fingerprints/stealth. It detects a challenge and hands control back to a human. This is a permanent design line, not a missing feature.
+
+See [SECURITY.md](SECURITY.md) for the loopback threat model and the Isolated-Agent vs Real-Profile-Attach distinction.
 
 ---
 
 ## Contributing
 
-Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on code style, testing workflows, and cross-compilation requirements.
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for code style, testing workflows, and cross-compilation requirements, and our [Code of Conduct](CODE_OF_CONDUCT.md). Release history is in [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
