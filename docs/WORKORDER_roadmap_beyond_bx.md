@@ -25,6 +25,54 @@ Status legend: ⬜ not started · 🔄 in progress · ✅ done+tested · ⏸ blo
 
 ---
 
+# ════════ ANTI-DRIFT PROTOCOL — READ AT THE START OF EVERY SESSION (do not skip) ════════
+
+**Assume you have forgotten everything and that this dashboard may be lying. Re-derive ground truth from
+git and tests before you trust any ✅ — including ones you think you wrote.** This section exists because a
+forgetful/hallucinating agent will otherwise mark work done that was never committed or never passed.
+
+### 1. Resume — reconstruct true state first, every session
+```bash
+git log --oneline -25
+git status --porcelain            # MUST be empty before you start new work
+go test ./... -count=1            # the real pass/fail — not what the dashboard claims
+bash scripts/verify-roadmap.sh    # audits every ✅ row against git (see §5)
+```
+A row is **really** done only if ALL hold: `git log --oneline --all | grep -w <ID>` returns a commit, `go
+test` is green, and the tree is clean. **If the dashboard says ✅ but these do not hold, the dashboard is
+wrong — reset that row to ⬜/❌ and fix it before doing anything else.** Reality (git + tests) always wins
+over the dashboard and over your memory.
+
+### 2. Evidence contract — what ✅ requires (verifiable artifacts, never prose)
+A row may be ✅ only when its **Evidence** line contains all of:
+- the **commit SHA** (`git rev-parse --short HEAD` right after the task's commit),
+- the **exact `go test` output line(s)** for the task's test (copy-pasted, not paraphrased),
+- for CI-verifiable work, the **CI run line/URL**.
+
+"Looks done", "should pass", or any description without real output **is not done**. Do not write evidence
+you did not produce by running the command.
+
+### 3. One task at a time (WIP = 1)
+Exactly **one row 🔄** at any moment. Finish it (✅ with evidence) or revert it (back to ⬜) before starting
+another. Never leave two rows 🔄 — that is how context gets lost between them.
+
+### 4. Naming convention — makes every claim machine-auditable
+- The **commit scope carries the feature ID**: `feat(context): C1 ranked retrieval`, `test(context): C1 …`.
+- Each task's **test function name contains the ID**: `func TestC1RankedRetrieval(...)`. This lets the
+  verifier and a human map tests → tasks with one grep.
+
+### 5. Verify before you report — `scripts/verify-roadmap.sh`
+It parses this dashboard and, for every row whose Status is ✅, asserts a commit references that feature ID.
+It exits non-zero (and CI fails) if any ✅ row is not backed by a commit. **Do not tell the user a task or
+phase is done until this script passes.** It is also wired into CI (`ci.yml`), so a dashboard edit that
+claims done without a backing commit turns the build red.
+
+### 6. On every resume, reconcile the dashboard to reality BEFORE coding
+If §1 shows drift (dashboard ahead of git/tests), your first commit of the session is the correction:
+`docs(roadmap): reconcile dashboard with verified state`. Only then proceed to the next ⬜ task.
+
+---
+
 # ════════ STATUS DASHBOARD ════════
 
 | # | Feature | Phase | Daemon | CLI | MCP | Tests | Status |

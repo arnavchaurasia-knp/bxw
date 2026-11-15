@@ -44,6 +44,10 @@ jobs:
           echo "$out" | grep -q "ci-stamp-test" || { echo "FAIL: version not stamped via bxw/internal/app.Version (check release ldflags target)"; exit 1; }
           rm -f "$EXE"
 
+      - name: Roadmap Dashboard Audit
+        shell: bash
+        run: bash scripts/verify-roadmap.sh
+
       - name: Smoke Test (Windows)
         if: runner.os == 'Windows'
         run: |
